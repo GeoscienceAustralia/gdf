@@ -33,25 +33,15 @@ Created on Jun 5, 2015
 '''
 
 import os
-import sys
-import threading
-import traceback
 import numpy as np
-from datetime import datetime, date, timedelta
-from math import floor
+from datetime import datetime, timedelta
 import pytz
-import calendar
-import collections
-import numexpr
 import logging
-import errno
 import shutil
 from osgeo import gdal
 
 import gdf
 from gdf import Database
-from gdf import CachedResultSet
-from gdf import CommandLineArgs
 from gdf import ConfigFile
 from gdf import GDF
 from gdf import GDFNetCDF
@@ -324,12 +314,6 @@ order by end_datetime
                          dimension_index_dict={'T': t_indices}, netcdf_format=None)
         del t_indices
         
-        # Set georeferencing from first or second tile for fault tolerance
-        try:
-            gdfnetcdf.georeference_from_file(data_descriptor[0]['tile_pathname'])
-        except:
-            gdfnetcdf.georeference_from_file(data_descriptor[1]['tile_pathname'])
-
         variable_dict = self.storage_config[self.storage_type]['measurement_types']
         variable_names = variable_dict.keys()
                 
