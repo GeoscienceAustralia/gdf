@@ -230,6 +230,8 @@ class GDFNetCDF(object):
                                                               self.storage_config['dimensions']['X']['reference_system_unit'])
         self.netcdf_object.featureType = 'grid'
         
+        self.georeference()
+        
         self.sync()
      
     def write_slice(self, variable_name, slice_array, indices_dict):
@@ -549,7 +551,7 @@ class GDFNetCDF(object):
         '''
         def getMinMaxExtents(samples, lines, geoTransform):
             """
-            Calculates the min/max extents based on the input latitude and longitude vectors.
+            Calculates the min/max extents based on the geotransform and raster sizes.
         
             :param samples:
                 An integer representing the number of samples (columns) in an array.
@@ -567,8 +569,8 @@ class GDFNetCDF(object):
                 Hasn't been tested for northern or western hemispheres.
             """
             extents = []
-            x_list  = [0,samples]
-            y_list  = [0,lines]
+            x_list  = [0, samples]
+            y_list  = [0, lines]
         
             for px in x_list:
                 for py in y_list:
@@ -607,6 +609,72 @@ class GDFNetCDF(object):
         logger.debug('crs_metadata = %s', crs_metadata)
      
         extents = getMinMaxExtents(gdal_dataset.RasterXSize, gdal_dataset.RasterYSize, geotransform)
+        #pdb.set_trace()
+        self.netcdf_object.geospatial_lat_min = extents[0]
+        self.netcdf_object.geospatial_lat_max = extents[1]
+        self.netcdf_object.geospatial_lat_units = 'degrees_north'
+        self.netcdf_object.geospatial_lat_resolution = geotransform[5]
+        self.netcdf_object.geospatial_lon_min = extents[2]
+        self.netcdf_object.geospatial_lon_max = extents[3]
+        self.netcdf_object.geospatial_lon_units = 'degrees_east'
+        self.netcdf_object.geospatial_lon_resolution = geotransform[1]
+
+
+    def georeference(self):
+        '''
+        Function to set georeferencing from storage_type reference system and previously set latitude and longitude vectors
+        '''
+        def getMinMaxExtents():
+            """
+            Calculates the min/max extents based on the input latitude and longitude vectors.
+        
+            :return:
+                A tuple containing (min_lat, max_lat, min_lon, max_lat)
+        
+            :notes:
+                Hasn't been tested for northern or western hemispheres.
+            """
+            half_pixel_size = self.storage_config['dimensions']['Y']['dimension_element_size'] / 2.0
+            index_vector = self.netcdf_object.variables[self.storage_config['dimensions']['Y']['dimension_name']][:]
+            min_lat = np.min(index_vector) - half_pixel_size
+            max_lat = np.max(index_vector) + half_pixel_size
+
+            half_pixel_size = self.storage_config['dimensions']['X']['dimension_element_size'] / 2.0
+            index_vector = self.netcdf_object.variables[self.storage_config['dimensions']['X']['dimension_name']][:]
+            min_lon = np.min(index_vector) - half_pixel_size
+            max_lon = np.max(index_vector) + half_pixel_size
+        
+            return (min_lat, max_lat, min_lon, max_lon)
+        
+        # Start of georeference() definition
+
+        extents = getMinMaxExtents()
+        geotransform = (extents[2], self.storage_config['dimensions']['X']['dimension_element_size'], 0,
+                        extents[1], 0, self.storage_config['dimensions']['Y']['dimension_element_size'])
+        if self.storage_config['dimensions']['X']['reverse_index']:
+            geotransform[1] = -geotransform[1]
+        if self.storage_config['dimensions']['Y']['reverse_index']:
+            geotransform[5] = -geotransform[5]
+        logger.debug('geotransform = %s', geotransform)
+        
+        # Set coordinate reference from storage_type XY domain reference_system_definition
+        spatial_reference = osr.SpatialReference()
+        epsg_match = re.match('EPSG:(\d*)$', self.storage_config['domains']['XY']['reference_system_definition'])
+        if epsg_match:
+            assert not spatial_reference.ImportFromEPSG(int(epsg_match.groups()[0])), 'Invalid EPSG Code in reference_system_definition'
+        else:
+            assert not spatial_reference.ImportFromWkt(self.storage_config['domains']['XY']['reference_system_definition']), 'Invalid WKT in reference_system_definition'
+
+        crs_metadata = {'crs:name': spatial_reference.GetAttrValue('geogcs'),
+                    'crs:longitude_of_prime_meridian': 0.0, #TODO: This needs to be fixed!!! An OSR object should have this, but maybe only for specific OSR references??
+                    'crs:inverse_flattening': spatial_reference.GetInvFlattening(),
+                    'crs:semi_major_axis': spatial_reference.GetSemiMajor(),
+                    'crs:semi_minor_axis': spatial_reference.GetSemiMinor(),
+                    }
+        self.set_variable('crs', dims=(), dtype='i4')
+        self.set_attributes(crs_metadata)
+        logger.debug('crs_metadata = %s', crs_metadata)
+     
         #pdb.set_trace()
         self.netcdf_object.geospatial_lat_min = extents[0]
         self.netcdf_object.geospatial_lat_max = extents[1]

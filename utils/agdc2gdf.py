@@ -361,9 +361,6 @@ order by end_datetime
                          dimension_index_dict={'T': t_indices}, netcdf_format=None)
         del t_indices
         
-        # Set georeferencing from first tile
-        gdfnetcdf.georeference_from_file(data_descriptor[0]['tile_pathname'])
-
         variable_dict = self.storage_config[self.storage_type]['measurement_types']
         variable_names = variable_dict.keys()
                 
