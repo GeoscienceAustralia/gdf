@@ -75,7 +75,7 @@ class GDF(object):
     Class definition for GDF (General Data Framework).
     Manages configuration and database connections.
     '''
-    DEFAULT_CONFIG_FILE = 'gdf_default.conf' # N.B: Assumed to reside in code root directory
+    DEFAULT_CONFIG_FILE = 'gdf_default.conf' # N.B: Assumed to reside in gdf_config directory under code root directory
 
     ARG_DESCRIPTORS = {'refresh': {'short_flag': '-r', 
                                         'long_flag': '--refresh', 
@@ -142,7 +142,7 @@ class GDF(object):
         config_dict = collections.OrderedDict() # Need to preserve order of config files
         
         # Use default config file if none provided
-        config_files_string = config_files_string or os.path.join(self._code_root, GDF.DEFAULT_CONFIG_FILE)
+        config_files_string = config_files_string or os.path.join(self._code_root, 'gdf_config', GDF.DEFAULT_CONFIG_FILE)
         
         # Set list of absolute config file paths from comma-delimited list
         self._config_files = [os.path.abspath(config_file) for config_file in config_files_string.split(',')] 

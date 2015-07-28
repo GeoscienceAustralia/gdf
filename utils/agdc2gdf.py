@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG) # Logging level for this module
 
 class AGDC2GDF(GDF):
-    DEFAULT_CONFIG_FILE = 'agdc2gdf_default.conf' # N.B: Assumed to reside in code root directory
+    DEFAULT_CONFIG_FILE = 'agdc2gdf_default.conf' # N.B: Assumed to reside in agdc2gdf_config under code root directory
     ARG_DESCRIPTORS = {'xmin': {'short_flag': '-x1', 
                                         'long_flag': '--xmin', 
                                         'default': None, 
@@ -136,6 +136,13 @@ class AGDC2GDF(GDF):
                                         'const': None, 
                                         'help': 'AGDC processing level to process'
                                         },
+                                'tile_type_id': {'short_flag': '-tid', 
+                                        'long_flag': '--tile_type_id', 
+                                        'default': None, 
+                                        'action': 'store',
+                                        'const': None, 
+                                        'help': 'AGDC tile_type_id to process'
+                                        },
                                 'temp_dir': {'short_flag': '-t', 
                                         'long_flag': '--temp_dir', 
                                         'default': None, 
@@ -170,7 +177,7 @@ class AGDC2GDF(GDF):
         
         self.dryrun = self._command_line_params['dryrun']
 
-        agdc2gdf_config_file = self._command_line_params['config_files'] or os.path.join(self._code_root, AGDC2GDF.DEFAULT_CONFIG_FILE)
+        agdc2gdf_config_file = self._command_line_params['config_files'] or os.path.join(self._code_root, 'agdc2gdf_config', AGDC2GDF.DEFAULT_CONFIG_FILE)
         
         agdc2gdf_config_file_object = ConfigFile(agdc2gdf_config_file)
         
@@ -205,6 +212,8 @@ class AGDC2GDF(GDF):
 
         self.agdc_level = self._command_line_params.get('level') or agdc2gdf_config_file_object.configuration['agdc']['level']
         
+        self.agdc_tile_type_id = self._command_line_params.get('tile_type_id') or agdc2gdf_config_file_object.configuration['agdc']['tile_type_id']
+        
         # Read GDF storage configuration from databases
         self._storage_config = self._get_storage_config()
         self.storage_type_config = self._storage_config[self.storage_type]
@@ -238,7 +247,25 @@ class AGDC2GDF(GDF):
             logger.error('Unable to connect to database for %s: %s', db_ref, e.message)
             raise e
         
-       
+        # Set self.tile_type_info from tile_type record
+        SQL = '''-- Query to select tile_type_id info
+select *
+from tile_type
+where tile_type_id = %d''' % self.agdc_tile_type_id
+        self.tile_type_info = self.agdc_db.submit_query(SQL).record_generator()[0] # Only one record
+        self.tile_type_info['x_pixel_size'] = float(self.tile_type_info['x_size']) / float(self.tile_type_info['x_pixels'])
+        self.tile_type_info['y_pixel_size'] = float(self.tile_type_info['y_size']) / float(self.tile_type_info['y_pixels'])
+        
+        # Check compatibility of AGDC tile_type against GDF storage_type
+        assert self.tile_type_info['x_pixel_size'] == self.storage_config[self.storage_type]['dimensions']['X']['dimension_element_size'], \
+            'Different X pixel size detected: AGDC = %d, GDF = %d' % (self.tile_type_info['x_pixel_size'], self.storage_config[self.storage_type]['dimensions']['X']['dimension_element_size'])
+        assert self.tile_type_info['y_pixel_size'] == self.storage_config[self.storage_type]['dimensions']['Y']['dimension_element_size'], \
+            'Different Y pixel size detected: AGDC = %d, GDF = %d' % (self.tile_type_info['y_pixel_size'], self.storage_config[self.storage_type]['dimensions']['Y']['dimension_element_size'])
+        assert not self.tile_type_info['x_size'] % self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent'], \
+            'AGDC X size (%d) is not divisible by GDF X size (%d)' % (self.tile_type_info['x_size'], self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent'])
+        assert not self.tile_type_info['y_size'] % self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent'], \
+            'AGDC Y size (%d) is not divisible by GDF Y size (%d)' % (self.tile_type_info['y_size'], self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent'])
+        
         # Set self.range_dict from either command line or config file values
         self.range_dict = {}
         for dimension in self.storage_type_config['dimensions']:
@@ -250,7 +277,15 @@ class AGDC2GDF(GDF):
         log_multiline(logger.debug, self.__dict__, 'AGDC2GDF.__dict__', '\t')        
 
     def read_agdc(self, storage_indices):        
+        '''
+        Function to find all AGDC tiles containing data for selected GDF storage indices
+        '''
         
+        # Calculate AGDC indices from GDF indices
+        agdc_x_index = self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) - self.tile_type_info['x_origin'] / self.tile_type_info['x_size']
+        agdc_y_index = self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) - self.tile_type_info['y_origin'] / self.tile_type_info['y_size']
+        
+        #TODO: eliminate duplicated query for sub-tiles
         SQL = '''-- Query to select all tiles in range with required dataset info
 select *
 from tile
@@ -260,6 +295,7 @@ join satellite using(satellite_id)
 join sensor using(satellite_id, sensor_id)
 join processing_level using(level_id)
 where tile_class_id in (1,4) --Non-overlapped & mosaics
+and tile_type_id = %(tile_type_id)s
 and x_index = %(x_index)s
 and y_index = %(y_index)s
 and end_datetime between %(start_datetime)s and %(end_datetime)s
@@ -281,13 +317,14 @@ order by end_datetime
             start_datetime = datetime(t_index // 12, t_index % 12, 1)
             end_datetime = datetime(t_index // 12, t_index % 12, 1) - timedelta(microseconds=1)
         
-        params={'x_index': storage_indices[self.dimensions.keys().index('X')],
-                'y_index': storage_indices[self.dimensions.keys().index('Y')],
+        params={'x_index': agdc_x_index,
+                'y_index': agdc_y_index,
                 'start_datetime': start_datetime,
                 'end_datetime': end_datetime,
                 'satellite': self.agdc_satellite,
                 'sensors': self.agdc_sensors, 
                 'level': self.agdc_level,
+                'tile_type_id': self.agdc_tile_type_id
                 }
         
 #        log_multiline(logger.debug, SQL, 'SQL', '\t')
@@ -336,7 +373,23 @@ order by end_datetime
             assert tile_dataset, 'Failed to open tile file %s' % record_dict['tile_pathname']
             
             logger.debug('Reading array data from tile file %s (%d/%d)', record_dict['tile_pathname'], slice_index + 1, len(data_descriptor))
-            data_array = tile_dataset.ReadAsArray()
+            
+            # Determine x & y offsets
+            xoff = (self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) -
+                    (record_dict['x_index'] * self.tile_type_info['x_size'] + self.tile_type_info['x_origin'])) / self.tile_type_info['x__pixel_size']
+            xsize = self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent']
+            if self.storage_config[self.storage_type]['dimensions']['X']['reverse_index']:
+                xoff = self.tile_type_info['x_size'] - xoff - xsize
+                    
+            yoff = (self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) -
+                    (record_dict['y_index'] * self.tile_type_info['y_size'] + self.tile_type_info['y_origin'])) / self.tile_type_info['y__pixel_size']
+            ysize = self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent']
+            if self.storage_config[self.storage_type]['dimensions']['Y']['reverse_index']:
+                xoff = self.tile_type_info['y_size'] - yoff - ysize
+                
+            logger.debug('xoff = %d, xsize = %d, yoff = %d, ysize = %d' % (xoff, xsize, yoff, ysize))
+            
+            data_array = tile_dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=xsize, ysize=ysize)
             logger.debug('data_array.shape = %s', data_array.shape)
             
             #TODO: Set up proper mapping between AGDC & GDF bands so this works with non-contiguous ranges
