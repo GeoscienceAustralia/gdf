@@ -6,12 +6,13 @@ gdf_root=$(dirname $(readlink -e $(dirname $0)))
 echo gdf_root = ${gdf_root}
 
 level='NBAR'
+tile_type_id=1
 xmin=139
 xmax=141
 ymin=-37
 ymax=-35
 temp_dir='/jobfs'
-config="${gdf_root}/utils/agdc2gdf_landsat.conf"
+config="${gdf_root}/utils/agdc2gdf_config/agdc2gdf_landsat.conf"
 
 
 for x in $(seq ${xmin} ${xmax})
@@ -27,8 +28,8 @@ do
         tmax=2013
         for t in $(seq ${tmin} ${tmax})
         do
-            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
-            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
         done
 
         # 17 years of LS5
@@ -39,8 +40,8 @@ do
         tmax=2015
         for t in $(seq ${tmin} ${tmax})
         do
-            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
-            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
         done
 
         # 3 years of LS5
@@ -51,8 +52,8 @@ do
         tmax=2015
         for t in $(seq ${tmin} ${tmax})
         do
-            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
-            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            echo qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
+            qsub -v gdf_root=${gdf_root},config=${config},storage_type=${storage_type},satellite=${satellite},sensors=${sensors},level=${level},tile_type_id=${tile_type_id},xmin=${x},xmax=${x},ymin=${ymin},ymax=${ymax},tmin=${t},tmax=${t},temp_dir=${temp_dir} ${gdf_root}/utils/agdc2gdf_qsub.sh
         done
 #    done
 done

@@ -182,7 +182,7 @@ class AGDC2GDF(GDF):
         agdc2gdf_config_file_object = ConfigFile(agdc2gdf_config_file)
         
         # Comma separated list of GDF config files specified in master config file
-        gdf_config_files_string = agdc2gdf_config_file_object.configuration['gdf'].get('config_files') or os.path.join(self._gdf_root, GDF.DEFAULT_CONFIG_FILE)
+        gdf_config_files_string = agdc2gdf_config_file_object.configuration['gdf'].get('config_files') or os.path.join(self._gdf_root, 'gdf_config', GDF.DEFAULT_CONFIG_FILE)
         
         # Create master GDF configuration dict containing both command line and config_file parameters
         self._configuration = self._get_config(gdf_config_files_string)
@@ -212,7 +212,7 @@ class AGDC2GDF(GDF):
 
         self.agdc_level = self._command_line_params.get('level') or agdc2gdf_config_file_object.configuration['agdc']['level']
         
-        self.agdc_tile_type_id = self._command_line_params.get('tile_type_id') or agdc2gdf_config_file_object.configuration['agdc']['tile_type_id']
+        self.agdc_tile_type_id = int(self._command_line_params.get('tile_type_id') or agdc2gdf_config_file_object.configuration['agdc']['tile_type_id'])
         
         # Read GDF storage configuration from databases
         self._storage_config = self._get_storage_config()
@@ -251,20 +251,23 @@ class AGDC2GDF(GDF):
         SQL = '''-- Query to select tile_type_id info
 select *
 from tile_type
-where tile_type_id = %d''' % self.agdc_tile_type_id
-        self.tile_type_info = self.agdc_db.submit_query(SQL).record_generator()[0] # Only one record
+where tile_type_id = %s''' % self.agdc_tile_type_id
+
+        for self.tile_type_info in self.agdc_db.submit_query(SQL).record_generator(): # Only one record
+            break
+
         self.tile_type_info['x_pixel_size'] = float(self.tile_type_info['x_size']) / float(self.tile_type_info['x_pixels'])
         self.tile_type_info['y_pixel_size'] = float(self.tile_type_info['y_size']) / float(self.tile_type_info['y_pixels'])
-        
+
         # Check compatibility of AGDC tile_type against GDF storage_type
         assert self.tile_type_info['x_pixel_size'] == self.storage_config[self.storage_type]['dimensions']['X']['dimension_element_size'], \
             'Different X pixel size detected: AGDC = %d, GDF = %d' % (self.tile_type_info['x_pixel_size'], self.storage_config[self.storage_type]['dimensions']['X']['dimension_element_size'])
         assert self.tile_type_info['y_pixel_size'] == self.storage_config[self.storage_type]['dimensions']['Y']['dimension_element_size'], \
             'Different Y pixel size detected: AGDC = %d, GDF = %d' % (self.tile_type_info['y_pixel_size'], self.storage_config[self.storage_type]['dimensions']['Y']['dimension_element_size'])
-        assert not self.tile_type_info['x_size'] % self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent'], \
-            'AGDC X size (%d) is not divisible by GDF X size (%d)' % (self.tile_type_info['x_size'], self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent'])
-        assert not self.tile_type_info['y_size'] % self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent'], \
-            'AGDC Y size (%d) is not divisible by GDF Y size (%d)' % (self.tile_type_info['y_size'], self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent'])
+        assert not self.tile_type_info['x_pixels'] % self.storage_config[self.storage_type]['dimensions']['X']['dimension_elements'], \
+            'AGDC X pixels (%d) is not divisible by GDF X elements (%d)' % (self.tile_type_info['x_pixels'], self.storage_config[self.storage_type]['dimensions']['X']['dimension_elements'])
+        assert not self.tile_type_info['y_pixels'] % self.storage_config[self.storage_type]['dimensions']['Y']['dimension_elements'], \
+            'AGDC Y pixels (%d) is not divisible by GDF Y elements (%d)' % (self.tile_type_info['y_pixels'], self.storage_config[self.storage_type]['dimensions']['Y']['dimension_elements'])
         
         # Set self.range_dict from either command line or config file values
         self.range_dict = {}
@@ -282,8 +285,9 @@ where tile_type_id = %d''' % self.agdc_tile_type_id
         '''
         
         # Calculate AGDC indices from GDF indices
-        agdc_x_index = self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) - self.tile_type_info['x_origin'] / self.tile_type_info['x_size']
-        agdc_y_index = self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) - self.tile_type_info['y_origin'] / self.tile_type_info['y_size']
+        agdc_x_index = floor(self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) - self.tile_type_info['x_origin'] / self.tile_type_info['x_size'])
+        agdc_y_index = floor(self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) - self.tile_type_info['y_origin'] / self.tile_type_info['y_size'])
+        logger.debug('agdc_x_index = %s, agdc_y_index = %s', agdc_x_index, agdc_y_index)
         
         #TODO: eliminate duplicated query for sub-tiles
         SQL = '''-- Query to select all tiles in range with required dataset info
@@ -373,20 +377,20 @@ order by end_datetime
             
             # Determine x & y offsets
             xoff = (self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) -
-                    (record_dict['x_index'] * self.tile_type_info['x_size'] + self.tile_type_info['x_origin'])) / self.tile_type_info['x__pixel_size']
-            xsize = self.storage_config[self.storage_type]['dimensions']['X']['dimension_extent']
+                    (record_dict['x_index'] * self.tile_type_info['x_size'] + self.tile_type_info['x_origin'])) / self.tile_type_info['x_pixel_size']
+            xsize = self.storage_config[self.storage_type]['dimensions']['X']['dimension_elements']
             if self.storage_config[self.storage_type]['dimensions']['X']['reverse_index']:
-                xoff = self.tile_type_info['x_size'] - xoff - xsize
+                xoff = self.tile_type_info['x_pixels'] - xoff - xsize
                     
             yoff = (self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) -
-                    (record_dict['y_index'] * self.tile_type_info['y_size'] + self.tile_type_info['y_origin'])) / self.tile_type_info['y__pixel_size']
-            ysize = self.storage_config[self.storage_type]['dimensions']['Y']['dimension_extent']
+                    (record_dict['y_index'] * self.tile_type_info['y_size'] + self.tile_type_info['y_origin'])) / self.tile_type_info['y_pixel_size']
+            ysize = self.storage_config[self.storage_type]['dimensions']['Y']['dimension_elements']
             if self.storage_config[self.storage_type]['dimensions']['Y']['reverse_index']:
-                xoff = self.tile_type_info['y_size'] - yoff - ysize
+                xoff = self.tile_type_info['y_pixels'] - yoff - ysize
                 
             logger.debug('xoff = %d, xsize = %d, yoff = %d, ysize = %d' % (xoff, xsize, yoff, ysize))
             
-            data_array = tile_dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=xsize, ysize=ysize)
+            data_array = tile_dataset.ReadAsArray(xoff, yoff, xsize, ysize)
             logger.debug('data_array.shape = %s', data_array.shape)
             
             #TODO: Set up proper mapping between AGDC & GDF bands so this works with non-contiguous ranges
@@ -842,7 +846,7 @@ def main():
     
     # Do migration in storage unit batches
     for storage_indices in storage_indices_list:
-        try:
+#        try:
             data_descriptor = agdc2gdf.read_agdc(storage_indices) 
             if not data_descriptor:
                 logger.info('No tiles found for storage unit %s', storage_indices)
@@ -855,8 +859,8 @@ def main():
             
             agdc2gdf.write_gdf_data(storage_indices, data_descriptor, storage_unit_path)
             logger.info('Finished creating and indexing %s', storage_unit_path)
-        except Exception, e:
-            logger.error('Exception raised while processing storage unit %s: %s', storage_indices, e.message)
+#        except Exception, e:
+#            logger.error('Exception raised while processing storage unit %s: %s', storage_indices, e.message)
 
 if __name__ == '__main__':
     main()

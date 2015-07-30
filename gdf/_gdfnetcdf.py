@@ -49,7 +49,7 @@ from _gdfutils import log_multiline
 from pprint import pprint
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO) # Logging level for this module
+logger.setLevel(logging.DEBUG) # Logging level for this module
 
 try:
     import netcdf_builder
@@ -150,9 +150,9 @@ class GDFNetCDF(object):
             if dimension_config['indexing_type'] == 'regular' and not dimension_index_vector:
                 element_size = dimension_config['dimension_element_size']
                 dimension_min = index * dimension_config['dimension_extent'] + dimension_config['dimension_origin'] + element_size / 2.0 # Half pixel to account for netCDF centre of pixel reference
-                dimension_max = dimension_min + dimension_config['dimension_extent']
+                dimension_max = dimension_min + dimension_config['dimension_extent'] - pow(0.1, self.decimal_places)
                 
-                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), GDFNetCDF.DECIMAL_PLACES)
+                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), self.decimal_places)
                 
                 # Cater for reversed index (e.g. positive Y index tends Southwards when image origin is in UL/NW corner)
                 if dimension_config['reverse_index']:
@@ -649,12 +649,13 @@ class GDFNetCDF(object):
         # Start of georeference() definition
 
         extents = getMinMaxExtents()
-        geotransform = (extents[2], self.storage_config['dimensions']['X']['dimension_element_size'], 0,
-                        extents[1], 0, self.storage_config['dimensions']['Y']['dimension_element_size'])
+        geotransform = [extents[2], self.storage_config['dimensions']['X']['dimension_element_size'], 0,
+                        extents[1], 0, self.storage_config['dimensions']['Y']['dimension_element_size']]
         if self.storage_config['dimensions']['X']['reverse_index']:
             geotransform[1] = -geotransform[1]
         if self.storage_config['dimensions']['Y']['reverse_index']:
             geotransform[5] = -geotransform[5]
+        geotransform = tuple(geotransform)
         logger.debug('geotransform = %s', geotransform)
         
         # Set coordinate reference from storage_type XY domain reference_system_definition
