@@ -376,17 +376,17 @@ order by end_datetime
             logger.debug('Reading array data from tile file %s (%d/%d)', record_dict['tile_pathname'], slice_index + 1, len(data_descriptor))
             
             # Determine x & y offsets
-            xoff = (self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) -
-                    (record_dict['x_index'] * self.tile_type_info['x_size'] + self.tile_type_info['x_origin'])) / self.tile_type_info['x_pixel_size']
-            xsize = self.storage_config[self.storage_type]['dimensions']['X']['dimension_elements']
+            xoff = int((self.index2ordinate(self.storage_type, 'X', storage_indices[self.dimensions.keys().index('X')]) -
+                    (record_dict['x_index'] * self.tile_type_info['x_size'] + self.tile_type_info['x_origin'])) / self.tile_type_info['x_pixel_size'])
+            xsize = int(self.storage_config[self.storage_type]['dimensions']['X']['dimension_elements'])
             if self.storage_config[self.storage_type]['dimensions']['X']['reverse_index']:
-                xoff = self.tile_type_info['x_pixels'] - xoff - xsize
+                xoff = int(self.tile_type_info['x_pixels'] - xoff - xsize)
                     
-            yoff = (self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) -
-                    (record_dict['y_index'] * self.tile_type_info['y_size'] + self.tile_type_info['y_origin'])) / self.tile_type_info['y_pixel_size']
-            ysize = self.storage_config[self.storage_type]['dimensions']['Y']['dimension_elements']
+            yoff = int((self.index2ordinate(self.storage_type, 'Y', storage_indices[self.dimensions.keys().index('Y')]) -
+                    (record_dict['y_index'] * self.tile_type_info['y_size'] + self.tile_type_info['y_origin'])) / self.tile_type_info['y_pixel_size'])
+            ysize = int(self.storage_config[self.storage_type]['dimensions']['Y']['dimension_elements'])
             if self.storage_config[self.storage_type]['dimensions']['Y']['reverse_index']:
-                xoff = self.tile_type_info['y_pixels'] - yoff - ysize
+                xoff = int(self.tile_type_info['y_pixels'] - yoff - ysize)
                 
             logger.debug('xoff = %d, xsize = %d, yoff = %d, ysize = %d' % (xoff, xsize, yoff, ysize))
             
