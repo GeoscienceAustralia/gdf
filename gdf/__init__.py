@@ -1390,6 +1390,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         # Create empty result_dict for returning result
         result_dict = {
                        'storage_type': storage_type,
+                       'dimensions': dimensions,
                        'arrays': {},
                        'indices': result_array_indices,
                        'element_sizes': [dimension_config[dimension]['dimension_element_size'] for dimension in dimensions],
