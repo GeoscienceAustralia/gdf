@@ -1240,6 +1240,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
          
         data_response = \
         {
+        'storage_type': <storage_type>
         'dimensions': ['x', 'y', 't'],
         'arrays': { # All of these will have the same shape
              'B30': '<Numpy array>',
@@ -1388,7 +1389,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         
         # Create empty result_dict for returning result
         result_dict = {
-                       'dimensions': dimensions,
+                       'storage_type': storage_type,
                        'arrays': {},
                        'indices': result_array_indices,
                        'element_sizes': [dimension_config[dimension]['dimension_element_size'] for dimension in dimensions],
@@ -1452,6 +1453,79 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         
         return result_dict
          
+    def purge_empty_layers(self, data_dict, purge_dimension='T'):
+        '''
+        Function to purge all layers in the specified dimension which do not contain any data in any array
+        
+        Parameters:
+            purge_dimension: dimension tag for dimension to be purged (default=T)
+            data_dict = \
+                {
+                'storage_type': <storage_type>
+                'dimensions': ['x', 'y', 't'],
+                'arrays': { # All of these will have the same shape
+                     'B30': '<Numpy array>',
+                     'B40': '<Numpy array>',
+                     'PQ': '<Numpy array>'
+                     },
+                'indices': [ # These will be the actual x, y & t (long, lat & time) values for each array index
+                    '<numpy array of x indices>',
+                    '<numpy array of y indices>',
+                    '<numpy array of t indices>'
+                    ]
+                'element_sizes': [ # These will be the element sizes for each dimension
+                    '< x element size>',
+                    '< y element size>',
+                    '< t element size>'
+                    ]
+                'coordinate_reference_systems': [ # These will be the coordinate_reference_systems for each dimension
+                    '< x CRS>',
+                    '< y CRS>',
+                    '< t CRS>'
+                    ]
+                }
+        '''
+        assert purge_dimension in data_dict['dimensions'], '%s is not in data_dict dimensions'
+        
+        dimensions = self.storage_config['dimensions'].keys()
+        assert dimensions == data_dict['dimensions'], 'Data dict dimensions do not conform to storage config dimensions'
+        
+        purge_dimension_index = dimensions.index(purge_dimension)
+        index_vector = data_dict['indices'][purge_dimension_index]
+
+        axis_tuple = (index for index in range(len(dimensions)) if index != purge_dimension_index) # Tuple containing indices of all dimensions other than purge_dimension
+
+        # Compose has_data_mask with True for any 
+        has_data_mask = np.zeros(index_vector.shape, np.bool) # Assume all empty to start with
+        # Check dimensionality and sizes of arrays
+        for measurement_type, measurement_type_config in data_dict['arrays'].items():
+            assert len(data_dict['arrays'][measurement_type].shape) == len(dimensions), 'Array is of incorrect dimensionality' 
+            assert len(index_vector) == data_dict['arrays'][measurement_type].shape[purge_dimension_index], 'Length of index_vector does not conform to data array shape'
+
+            #TODO: Deal with variables with no nodata_value defined.
+            if measurement_type_config['nodata_value'] is not None:
+                has_data_mask = has_data_mask | np.any(self.netcdf_object.variables[measurement_type][:] != measurement_type_config['nodata_value'], axis=axis_tuple)
+                
+        logger.debug('has_data_mask = %s', has_data_mask)
+        
+        # Create selection to omit empty slices
+        selection = [has_data_mask if dimensions[dimension_index] == purge_dimension 
+                     else slice(0, data_dict['arrays'][measurement_type].shape[dimension_index]) 
+                     for dimension_index in range(len(dimensions))]
+        logger.debug('selection = %s', selection)
+        
+        # Now get rid of the empty layers
+        for measurement_type in data_dict['arrays'].keys():
+            data_dict['arrays'][measurement_type] = data_dict['arrays'][measurement_type][selection]
+            
+        # Purge the index vector
+        logger.debug('index_vector[has_data_mask] = %s', index_vector[has_data_mask])
+        data_dict['indices'][purge_dimension_index] = index_vector[has_data_mask]
+        
+            
+        
+        
+        
          
         
         
