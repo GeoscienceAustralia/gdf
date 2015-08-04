@@ -1207,62 +1207,64 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             return ((index * self.storage_config[storage_type]['dimensions'][dimension]['dimension_extent']) + 
                     self.storage_config[storage_type]['dimensions'][dimension]['dimension_origin'])
             
-    def get_data(self, data_request_descriptor={}, destination_filename=None):
+    def get_data(self, data_request_descriptor={}, destination_filename=None, purge_dimension=None):
         '''
         Function to return composite in-memory arrays
-
-        data_request = \
-        {
-        'storage_type': 'LS5TM',
-        'variables': ('B30', 'B40','PQ'), # Note that we won't necessarily have PQ in the same storage unit
-        'dimensions': {
-             'x': {
-                   'range': (140, 142),
-                   'array_range': (0, 127)
-                   'crs': 'EPSG:4326'
-                   },
-             'y': {
-                   'range': (-36, -35),
-                   'array_range': (0, 127)
-                   'crs': 'EPSG:4326'
-                   },
-             't': {
-                   'range': (1293840000, 1325376000),
-                   'array_range': (0, 127)
-                   'crs': 'SSE', # Seconds since epoch
-                   'grouping_function': '<e.g. gdf.solar_day>'
-                   }
-             },
-        'polygon': '<some kind of text representation of a polygon for PostGIS to sort out>' # We won't be doing this in the pilot
-        }
+        Parameters:
+            data_request_descriptor = \
+            {
+            'storage_type': 'LS5TM',
+            'variables': ('B30', 'B40','PQ'), # Note that we won't necessarily have PQ in the same storage unit
+            'dimensions': {
+                 'x': {
+                       'range': (140, 142),
+                       'array_range': (0, 127)
+                       'crs': 'EPSG:4326'
+                       },
+                 'y': {
+                       'range': (-36, -35),
+                       'array_range': (0, 127)
+                       'crs': 'EPSG:4326'
+                       },
+                 't': {
+                       'range': (1293840000, 1325376000),
+                       'array_range': (0, 127)
+                       'crs': 'SSE', # Seconds since epoch
+                       'grouping_function': '<e.g. gdf.solar_day>'
+                       }
+                 },
+            'polygon': '<some kind of text representation of a polygon for PostGIS to sort out>' # We won't be doing this in the pilot
+            }
+            
+        destination_filename: Name of file to hold result (not used)
+        purge_dimension: dimension_tag of dimension along which to delete empty slices (use 'T' for time)
          
-         
-         
-        data_response = \
-        {
-        'storage_type': <storage_type>
-        'dimensions': ['x', 'y', 't'],
-        'arrays': { # All of these will have the same shape
-             'B30': '<Numpy array>',
-             'B40': '<Numpy array>',
-             'PQ': '<Numpy array>'
-             },
-        'indices': [ # These will be the actual x, y & t (long, lat & time) values for each array index
-            '<numpy array of x indices>',
-            '<numpy array of y indices>',
-            '<numpy array of t indices>'
-            ]
-        'element_sizes': [ # These will be the element sizes for each dimension
-            '< x element size>',
-            '< y element size>',
-            '< t element size>'
-            ]
-        'coordinate_reference_systems': [ # These will be the coordinate_reference_systems for each dimension
-            '< x CRS>',
-            '< y CRS>',
-            '< t CRS>'
-            ]
-        }
+        Returns:
+            data_response = \
+            {
+            'storage_type': <storage_type>
+            'dimensions': ['x', 'y', 't'],
+            'arrays': { # All of these will have the same shape
+                 'B30': '<Numpy array>',
+                 'B40': '<Numpy array>',
+                 'PQ': '<Numpy array>'
+                 },
+            'indices': [ # These will be the actual x, y & t (long, lat & time) values for each array index
+                '<numpy array of x indices>',
+                '<numpy array of y indices>',
+                '<numpy array of t indices>'
+                ]
+            'element_sizes': [ # These will be the element sizes for each dimension
+                '< x element size>',
+                '< y element size>',
+                '< t element size>'
+                ]
+            'coordinate_reference_systems': [ # These will be the coordinate_reference_systems for each dimension
+                '< x CRS>',
+                '< y CRS>',
+                '< t CRS>'
+                ]
+            }
         '''
         storage_type = data_request_descriptor['storage_type'] 
         
@@ -1451,6 +1453,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         
         log_multiline(logger.debug, result_dict, 'result_dict', '\t')
         logger.debug('Result size = %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions))
+        
+        if purge_dimension:
+            self.purge_empty_layers(result_dict, purge_dimension)
         
         return result_dict
          
