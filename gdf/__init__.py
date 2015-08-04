@@ -1550,6 +1550,78 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         
         return result_dict
          
-         
+    def purge_empty_layers(self, data_dict, purge_dimension='T'):
+        '''
+        Function to purge all layers in the specified dimension which do not contain any data in any array
         
+        Parameters:
+            purge_dimension: dimension tag for dimension to be purged (default=T)
+            data_dict = \
+                {
+                'storage_type': <storage_type>
+                'dimensions': ['x', 'y', 't'],
+                'arrays': { # All of these will have the same shape
+                     'B30': '<Numpy array>',
+                     'B40': '<Numpy array>',
+                     'PQ': '<Numpy array>'
+                     },
+                'indices': [ # These will be the actual x, y & t (long, lat & time) values for each array index
+                    '<numpy array of x indices>',
+                    '<numpy array of y indices>',
+                    '<numpy array of t indices>'
+                    ]
+                'element_sizes': [ # These will be the element sizes for each dimension
+                    '< x element size>',
+                    '< y element size>',
+                    '< t element size>'
+                    ]
+                'coordinate_reference_systems': [ # These will be the coordinate_reference_systems for each dimension
+                    '< x CRS>',
+                    '< y CRS>',
+                    '< t CRS>'
+                    ]
+                }
+        '''
+        logger.debug('data_dict = %s', data_dict)
+        assert purge_dimension in data_dict['dimensions'], '%s is not in data_dict dimensions'
         
+        dimensions = self.storage_config[data_dict['storage_type']]['dimensions'].keys()
+        assert dimensions == data_dict['dimensions'], 'Data dict dimensions do not conform to storage config dimensions'
+        
+        purge_dimension_index = dimensions.index(purge_dimension)
+        logger.debug('purge_dimension_index = %s', purge_dimension_index)
+
+        index_vector = data_dict['indices'][purge_dimension]
+        logger.debug('index_vector = %s', index_vector)
+
+        axis_tuple = tuple([index for index in range(len(dimensions)) if index != purge_dimension_index]) # Tuple containing indices of all dimensions other than purge_dimension
+        logger.debug('axis_tuple = %s', axis_tuple)
+
+        # Compose has_data_mask with True for any 
+        has_data_mask = np.zeros(index_vector.shape, np.bool) # Assume all empty to start with
+        # Check dimensionality and sizes of arrays
+        for measurement_type, array in data_dict['arrays'].items():
+            assert len(array.shape) == len(dimensions), 'Array is of incorrect dimensionality' 
+            assert len(index_vector) == array.shape[purge_dimension_index], 'Length of index_vector does not conform to data array shape'
+
+            #TODO: Deal with variables with no nodata_value defined.
+            measurement_type_config = self.storage_config[data_dict['storage_type']]['measurement_types'].get(measurement_type)
+            logger.debug('measurement_type_config = %s', measurement_type_config)
+            if measurement_type_config and measurement_type_config['nodata_value'] is not None:
+                has_data_mask = has_data_mask | np.any(array != measurement_type_config['nodata_value'], axis=axis_tuple)
+                
+        logger.debug('has_data_mask = %s', has_data_mask)
+        
+        # Create selection to omit empty slices
+        selection = [has_data_mask if dimensions[dimension_index] == purge_dimension 
+                     else slice(0, data_dict['arrays'][measurement_type].shape[dimension_index]) 
+                     for dimension_index in range(len(dimensions))]
+        logger.debug('selection = %s', selection)
+        
+        # Now get rid of the empty layers
+        for measurement_type in data_dict['arrays'].keys():
+            data_dict['arrays'][measurement_type] = data_dict['arrays'][measurement_type][selection]
+            
+        # Purge the index vector
+        logger.debug('index_vector[has_data_mask] = %s', index_vector[has_data_mask])
+        data_dict['indices'][purge_dimension] = index_vector[has_data_mask]
