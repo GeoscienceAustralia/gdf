@@ -1486,26 +1486,33 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                     ]
                 }
         '''
+        logger.debug('data_dict = %s', data_dict)
         assert purge_dimension in data_dict['dimensions'], '%s is not in data_dict dimensions'
         
-        dimensions = self.storage_config['dimensions'].keys()
+        dimensions = self.storage_config[data_dict['storage_type']]['dimensions'].keys()
         assert dimensions == data_dict['dimensions'], 'Data dict dimensions do not conform to storage config dimensions'
         
         purge_dimension_index = dimensions.index(purge_dimension)
-        index_vector = data_dict['indices'][purge_dimension_index]
+        logger.debug('purge_dimension_index = %s', purge_dimension_index)
 
-        axis_tuple = (index for index in range(len(dimensions)) if index != purge_dimension_index) # Tuple containing indices of all dimensions other than purge_dimension
+        index_vector = data_dict['indices'][purge_dimension]
+        logger.debug('index_vector = %s', index_vector)
+
+        axis_tuple = tuple([index for index in range(len(dimensions)) if index != purge_dimension_index]) # Tuple containing indices of all dimensions other than purge_dimension
+        logger.debug('axis_tuple = %s', axis_tuple)
 
         # Compose has_data_mask with True for any 
         has_data_mask = np.zeros(index_vector.shape, np.bool) # Assume all empty to start with
         # Check dimensionality and sizes of arrays
-        for measurement_type, measurement_type_config in data_dict['arrays'].items():
-            assert len(data_dict['arrays'][measurement_type].shape) == len(dimensions), 'Array is of incorrect dimensionality' 
-            assert len(index_vector) == data_dict['arrays'][measurement_type].shape[purge_dimension_index], 'Length of index_vector does not conform to data array shape'
+        for measurement_type, array in data_dict['arrays'].items():
+            assert len(array.shape) == len(dimensions), 'Array is of incorrect dimensionality' 
+            assert len(index_vector) == array.shape[purge_dimension_index], 'Length of index_vector does not conform to data array shape'
 
             #TODO: Deal with variables with no nodata_value defined.
-            if measurement_type_config['nodata_value'] is not None:
-                has_data_mask = has_data_mask | np.any(self.netcdf_object.variables[measurement_type][:] != measurement_type_config['nodata_value'], axis=axis_tuple)
+            measurement_type_config = self.storage_config[data_dict['storage_type']]['measurement_types'].get(measurement_type)
+            logger.debug('measurement_type_config = %s', measurement_type_config)
+            if measurement_type_config and measurement_type_config['nodata_value'] is not None:
+                has_data_mask = has_data_mask | np.any(array != measurement_type_config['nodata_value'], axis=axis_tuple)
                 
         logger.debug('has_data_mask = %s', has_data_mask)
         
@@ -1521,7 +1528,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             
         # Purge the index vector
         logger.debug('index_vector[has_data_mask] = %s', index_vector[has_data_mask])
-        data_dict['indices'][purge_dimension_index] = index_vector[has_data_mask]
+        data_dict['indices'][purge_dimension] = index_vector[has_data_mask]
         
             
         
