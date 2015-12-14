@@ -65,7 +65,7 @@ from _arguments import CommandLineArgs
 from _config_file import ConfigFile
 from _gdfnetcdf import GDFNetCDF
 from _gdfutils import dt2secs, secs2dt, days2dt, dt2days, make_dir, directory_writable, log_multiline
-
+from _opendap_utils import get_nc_list
 
 thread_exception = None
 
@@ -1305,7 +1305,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         range_dimensions = [dimension for dimension in dimensions if dimension in range_dict.keys()] # Range dimensions in order
         dimension_element_sizes = {dimension: dimension_config[dimension]['dimension_element_size'] for dimension in dimensions}
         
-        # Convert scalars into tuples to allow point values
+        # Convert scalars into tuples to allow point values instead of dimensional range tuples
         for dimension in range_dimensions:
             if not hasattr(range_dict[dimension], '__contains__'):
                 range_dict[dimension] = (range_dict[dimension] - storage_config['dimensions'][dimension]['dimension_element_size']/2,
@@ -1326,6 +1326,8 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                            for dimension_index in range(len(dimensions))}
         logger.debug('index_range_dict = %s', index_range_dict)
         
+        nc_list = get_nc_list(storage_config['opendap_catalog']) if self._opendap else None
+        
         # Find all existing storage units in range and retrieve the indices in ranges for each dimension 
         subset_dict = collections.OrderedDict()
         dimension_index_dict = {dimension: set() for dimension in dimensions} # Dict containing set (converted to list) of unique indices for each dimension
@@ -1334,29 +1336,30 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions]):
             logger.debug('indices = %s', indices)
             
+            # Compose URL for OPeNDAP or pathname for filesystem access
             if self._opendap:
                 storage_path = self.get_opendap_url(storage_type, indices)
             else:
                 storage_path = self.get_storage_path(storage_type, indices)
                 
             logger.debug('Opening storage unit %s', storage_path)
-            if self._opendap or os.path.exists(storage_path): #TODO: setup existence checks for OPeNDAP
-                try:
-                    gdfnetcdf = GDFNetCDF(storage_config, netcdf_filename=storage_path, decimal_places=GDF.DECIMAL_PLACES)
-                    subset_indices = gdfnetcdf.get_subset_indices(range_dict)
-                    if not subset_indices:
-                        raise Exception('Invalid subset range %s for storage unit %s' % (range_dict, storage_path)) # This should never happen
-    
-                    # Keep track of all indices for each dimension
-                    for dimension in dimensions:
-                        dimension_indices = np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
-                        #TODO: Find a vectorised way of doing this instead of using sets
-                        dimension_index_dict[dimension] |= set(dimension_indices.tolist())
-                        
-                    subset_dict[indices] = (gdfnetcdf, subset_indices)  
-                except:
-                    if not self._opendap: # Don't fail if endpoint doesn't exist 
-                        raise
+            if ((self._opendap and self.get_storage_filename(storage_type, indices) in nc_list) or 
+                (not self._opendap and os.path.exists(storage_path))):
+                gdfnetcdf = GDFNetCDF(storage_config, netcdf_filename=storage_path, decimal_places=GDF.DECIMAL_PLACES)
+                subset_indices = gdfnetcdf.get_subset_indices(range_dict)
+                if not subset_indices:
+                    raise Exception('Invalid subset range %s for storage unit %s' % (range_dict, storage_path)) # This should never happen
+
+                # Keep track of all indices for each dimension
+                for dimension in dimensions:
+                    dimension_indices = np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
+                    #TODO: Find a vectorised way of doing this instead of using sets
+                    dimension_index_dict[dimension] |= set(dimension_indices.tolist())
+                    
+                subset_dict[indices] = (gdfnetcdf, subset_indices)  
+            else:
+                logger.debug('storage unit %s does not exist.', storage_path)
+                
         logger.debug('%d storage units found', len(subset_dict))
         logger.debug('subset_dict = %s', subset_dict)
             
