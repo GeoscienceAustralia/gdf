@@ -231,10 +231,10 @@ class GDF(object):
         # Convert self.refresh to Boolean
         self.refresh = self.debug or strtobool(self.refresh)
         
-        # Force refresh if config has changed
+        # Force refresh if config has changed and OPeNDAP is not used
         try:
             cached_config = self._get_cached_object('configuration.pkl')
-            self.refresh = self.refresh or (self._configuration != cached_config) 
+            self.refresh = (self.refresh or (self._configuration != cached_config)) and not self._opendap 
         except:
             self.refresh = True
         
