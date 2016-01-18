@@ -792,8 +792,8 @@ def main():
     
     # Do migration in storage unit batches
     for storage_indices in storage_indices_list:
-        #try:
-        if True:
+        try:
+        #if True:
             data_descriptor = agdc2gdf.read_agdc(storage_indices) 
             if not data_descriptor:
                 logger.info('No tiles found for storage unit %s', storage_indices)
@@ -806,8 +806,8 @@ def main():
             
             agdc2gdf.write_gdf_data(storage_indices, data_descriptor, storage_unit_path)
             logger.info('Finished creating and indexing %s', storage_unit_path)
-        #except Exception, e:
-            #logger.error('Exception raised while processing storage unit %s: %s', storage_indices, e.message)
+        except Exception, e:
+            logger.error('Exception raised while processing storage unit %s: %s', storage_indices, e.message)
 
 if __name__ == '__main__':
     main()
