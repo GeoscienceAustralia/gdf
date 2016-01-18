@@ -324,19 +324,40 @@ order by end_datetime
                          dimension_index_dict={'T': t_indices}, netcdf_format=None)
         del t_indices
         
-        # Set georeferencing from first tile
-        gdfnetcdf.georeference_from_file(data_descriptor[0]['tile_pathname'])
+        # Set georeferencing from first or second tile for fault tolerance
+        try:
+            gdfnetcdf.georeference_from_file(data_descriptor[0]['tile_pathname'])
+        except:
+            gdfnetcdf.georeference_from_file(data_descriptor[1]['tile_pathname'])
 
         variable_dict = self.storage_config[self.storage_type]['measurement_types']
         variable_names = variable_dict.keys()
                 
         slice_index = 0
         for record_dict in data_descriptor:
-            tile_dataset = gdal.Open(record_dict['tile_pathname'])
-            assert tile_dataset, 'Failed to open tile file %s' % record_dict['tile_pathname']
+            try:
+                tile_dataset = gdal.Open(record_dict['tile_pathname'])
+                assert tile_dataset, 'Failed to open tile file %s' % record_dict['tile_pathname']
             
-            logger.debug('Reading array data from tile file %s (%d/%d)', record_dict['tile_pathname'], slice_index + 1, len(data_descriptor))
-            data_array = tile_dataset.ReadAsArray()
+                logger.debug('Reading array data from tile file %s (%d/%d)', record_dict['tile_pathname'], slice_index + 1, len(data_descriptor))
+                data_array = tile_dataset.ReadAsArray()
+            except Exception, e:
+                # Can't read data_array from GeoTIFF - create empty data_array instead
+                logger.warning('Unable to read array from %s: %s', 'tile_pathname', e.message)
+                shape = tuple([len(variable_dict)] +
+                              [dim['dimension_elements'] 
+                               for dim in self.storage_config[self.storage_type]['dimensions'].values() 
+                               if dim['indexing_type'] == 'regular']
+                              )
+                
+                # All data types and no-data values should be the same - just use first one
+                dtype = variable_dict[variable_dict.keys()[0]]['numpy_datatype_name']
+                nodata_value = variable_dict[variable_dict.keys()[0]]['nodata_value']
+                if nodata_value is None:
+                    nodata_value = np.nan
+                    
+                data_array = np.ones(shape, dtype) * nodata_value
+                
             logger.debug('data_array.shape = %s', data_array.shape)
             
             #TODO: Set up proper mapping between AGDC & GDF bands so this works with non-contiguous ranges
