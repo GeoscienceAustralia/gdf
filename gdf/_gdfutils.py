@@ -91,9 +91,10 @@ def directory_writable(dir_path):
     '''
     Function to return true if dir_path can be written to
     '''
+    hostname = os.environ.get('HOSTNAME') or 'local'
+    test_filename = os.path.join(dir_path, 'test_' + hostname + '_' + str(os.getpid()))
     try:
         make_dir(dir_path)
-        test_filename = os.path.join(dir_path, 'test_' + os.environ['HOSTNAME'] + '_' + str(os.getpid()))
         test_file = open(test_filename, 'w')
         test_file.close()
         os.remove(test_filename)
