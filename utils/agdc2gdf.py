@@ -343,7 +343,7 @@ order by end_datetime
                 data_array = tile_dataset.ReadAsArray()
             except Exception, e:
                 # Can't read data_array from GeoTIFF - create empty data_array instead
-                logger.warning('Unable to read array from %s: %s', 'tile_pathname', e.message)
+                logger.warning('WARNING: Unable to read array from %s: %s', 'tile_pathname', e.message)
                 shape = tuple([len(variable_dict)] +
                               [dim['dimension_elements'] 
                                for dim in self.storage_config[self.storage_type]['dimensions'].values() 
