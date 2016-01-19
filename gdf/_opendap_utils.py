@@ -33,9 +33,22 @@ Created on Dec 14, 2015
 @author: Alex Ip
 '''
 
-import urllib
-import lxml.html
 import re
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO) # Logging level for this module
+
+# Ignore failed import of URL modules
+try:
+    import urllib
+except:
+    logger.warning('WARNING: Unable to import urllib. Any OPeNDAP function calls will fail.')
+
+try:
+    import lxml.html
+except:
+    logger.warning('WARNING: Unable to import lxml.html. Any OPeNDAP function calls will fail.')
 
 
 def get_nc_list(opendap_catalog_url):

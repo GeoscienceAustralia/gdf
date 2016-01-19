@@ -333,6 +333,19 @@ order by end_datetime
         variable_dict = self.storage_config[self.storage_type]['measurement_types']
         variable_names = variable_dict.keys()
                 
+        array_shape = tuple([len(variable_dict)] +
+                            [dim['dimension_elements'] 
+                             for dim in self.storage_config[self.storage_type]['dimensions'].values() 
+                             if dim['indexing_type'] == 'regular']
+                            )
+        
+        # All data types and no-data values should be the same - just use first one
+        array_dtype = variable_dict[variable_dict.keys()[0]]['numpy_datatype_name']
+
+        nodata_value = variable_dict[variable_dict.keys()[0]]['nodata_value']
+        if nodata_value is None:
+            nodata_value = np.nan
+                    
         slice_index = 0
         for record_dict in data_descriptor:
             try:
@@ -341,22 +354,13 @@ order by end_datetime
             
                 logger.debug('Reading array data from tile file %s (%d/%d)', record_dict['tile_pathname'], slice_index + 1, len(data_descriptor))
                 data_array = tile_dataset.ReadAsArray()
+
+                assert data_array.shape == array_shape, 'Tile array shape is not %s' % array_shape
             except Exception, e:
                 # Can't read data_array from GeoTIFF - create empty data_array instead
-                logger.warning('Unable to read array from %s: %s', 'tile_pathname', e.message)
-                shape = tuple([len(variable_dict)] +
-                              [dim['dimension_elements'] 
-                               for dim in self.storage_config[self.storage_type]['dimensions'].values() 
-                               if dim['indexing_type'] == 'regular']
-                              )
-                
-                # All data types and no-data values should be the same - just use first one
-                dtype = variable_dict[variable_dict.keys()[0]]['numpy_datatype_name']
-                nodata_value = variable_dict[variable_dict.keys()[0]]['nodata_value']
-                if nodata_value is None:
-                    nodata_value = np.nan
-                    
-                data_array = np.ones(shape, dtype) * nodata_value
+                logger.warning('WARNING: Unable to read array from tile - empty array created: %s', e.message)
+
+                data_array = np.ones(array_shape, array_dtype) * nodata_value
                 
             logger.debug('data_array.shape = %s', data_array.shape)
             
@@ -814,6 +818,7 @@ def main():
     # Do migration in storage unit batches
     for storage_indices in storage_indices_list:
         try:
+        #if True:
             data_descriptor = agdc2gdf.read_agdc(storage_indices) 
             if not data_descriptor:
                 logger.info('No tiles found for storage unit %s', storage_indices)

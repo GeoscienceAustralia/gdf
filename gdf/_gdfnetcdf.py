@@ -152,7 +152,7 @@ class GDFNetCDF(object):
                 dimension_min = index * dimension_config['dimension_extent'] + dimension_config['dimension_origin'] + element_size / 2.0 # Half pixel to account for netCDF centre of pixel reference
                 dimension_max = dimension_min + dimension_config['dimension_extent']
                 
-                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), GDFNetCDF.DECIMAL_PLACES)
+                dimension_index_vector = np.around(np.arange(dimension_min, dimension_max, element_size), self.decimal_places)
                 
                 # Cater for reversed index (e.g. positive Y index tends Southwards when image origin is in UL/NW corner)
                 if dimension_config['reverse_index']:

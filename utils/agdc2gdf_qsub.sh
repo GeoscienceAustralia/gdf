@@ -7,6 +7,9 @@
 #@#PBS -m e
 #PBS -M alex.ip@ga.gov.au
 
+#PBS -lother=gdata1
+#PBS -lother=gdata2
+
 umask u=rwx,g=rwx,o=rx
 
 export MODULEPATH=/projects/u46/opt/modules/modulefiles:$MODULEPATH
@@ -19,5 +22,7 @@ module load psycopg2/2.5.1
 module load gdal/1.10.1
 module load eo-tools/0.4
 export PYTHONPATH=${gdf_root}:$PYTHONPATH
+
+uname -a
 
 python ${gdf_root}/utils/agdc2gdf.py --config=${config} --storage_type=${storage_type} --satellite=${satellite} --sensors=${sensors} --level=${level} --xmin=${xmin} --xmax=${xmax} --ymin=${ymin} --ymax=${ymax} --tmin=${tmin} --tmax=${tmax} --temp_dir=${temp_dir} --debug
