@@ -15,7 +15,7 @@ tmax=2011
 storage_type='MOD09'
 satellite='MT'
 sensors='MODIS-Terra'
-temp_dir='/jobfs'
+temp_dir='/g/data1/r78/axi547/gdf/temp'
 config="${gdf_root}/utils/agdc2gdf_modis.conf"
 
 for x in $(seq ${xmin} ${xmax})

@@ -10,7 +10,7 @@ xmin=139
 xmax=141
 ymin=-37
 ymax=-35
-temp_dir='/jobfs'
+temp_dir='/g/data1/r78/axi547/gdf/temp'
 config="${gdf_root}/utils/agdc2gdf_landsat.conf"
 
 for x in $(seq ${xmin} ${xmax})
