@@ -65,7 +65,7 @@ from _arguments import CommandLineArgs
 from _config_file import ConfigFile
 from _gdfnetcdf import GDFNetCDF
 from _gdfutils import dt2secs, secs2dt, days2dt, dt2days, make_dir, directory_writable, log_multiline
-
+from _opendap_utils import get_nc_list
 
 thread_exception = None
 
@@ -201,8 +201,9 @@ class GDF(object):
         return database_dict
         
 
-    def __init__(self):
+    def __init__(self, opendap=False):
         '''Constructor for class GDF
+        Parameter: opendap - Boolean value indicating whether to use OPeNDAP endpoints
         '''
         self._config_files = [] # List of config files read
         
@@ -213,6 +214,8 @@ class GDF(object):
         
         self._debug = False
         self.debug = self._command_line_params['debug']
+        
+        self._opendap = opendap
                 
         # Create master configuration dict containing both command line and config_file parameters
         self._configuration = self._get_config(self._command_line_params['config_files'])       
@@ -228,10 +231,10 @@ class GDF(object):
         # Convert self.refresh to Boolean
         self.refresh = self.debug or strtobool(self.refresh)
         
-        # Force refresh if config has changed
+        # Force refresh if config has changed and OPeNDAP is not used
         try:
             cached_config = self._get_cached_object('configuration.pkl')
-            self.refresh = self.refresh or (self._configuration != cached_config) 
+            self.refresh = (self.refresh or (self._configuration != cached_config)) and not self._opendap 
         except:
             self.refresh = True
         
@@ -445,6 +448,8 @@ select distinct
     storage_type_id,
     storage_type_name,
     storage_type_location,
+    opendap_root,
+    opendap_catalog,
     measurement_type_tag,
     measurement_metatype_id,
     measurement_type_id,
@@ -515,6 +520,8 @@ left join property using(property_id)
                                          'storage_type_id': record['storage_type_id'],
                                          'storage_type_name': record['storage_type_name'],
                                          'storage_type_location': record['storage_type_location'],
+                                         'opendap_root': record['opendap_root'],
+                                         'opendap_catalog': record['opendap_catalog'],
                                          'measurement_types': collections.OrderedDict(),
                                          'domains': {},
                                          'dimensions': collections.OrderedDict()
@@ -1168,7 +1175,18 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         '''
         return os.path.join(self.get_storage_dir(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices))
     
+    def get_opendap_root(self, storage_type, storage_indices):
+        '''
+        Function to return the filename for a storage unit file with the specified storage_type & storage_indices
+        '''
+        return self._storage_config[storage_type]['opendap_root']
     
+    def get_opendap_url(self, storage_type, storage_indices):
+        '''
+        Function to return the full path to a storage unit file with the specified storage_type & storage_indices
+        '''
+        return os.path.join(self.get_opendap_root(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices))
+       
     def ordinate2index(self, storage_type, dimension, ordinate):
         '''
         Return the storage unit index from the reference system ordinate for the specified storage type, ordinate value and dimension tag
@@ -1266,8 +1284,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         storage_type = data_request_descriptor['storage_type'] 
         
         # Convert dimension tags to upper case
-        range_dict = {dimension.upper(): dimension_spec['range'] 
-                      for dimension, dimension_spec in data_request_descriptor['dimensions'].items()} 
+        range_dict = {dimension.upper(): dimension_spec.get('range')
+                      for dimension, dimension_spec in data_request_descriptor['dimensions'].items() if dimension_spec.get('range')}
+        
         # Create dict of array slices if specified
         slice_dict = {dimension.upper(): slice(*dimension_spec['array_range']) 
                       for dimension, dimension_spec in data_request_descriptor['dimensions'].items() if dimension_spec.get('array_range')} 
@@ -1286,6 +1305,14 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         range_dimensions = [dimension for dimension in dimensions if dimension in range_dict.keys()] # Range dimensions in order
         dimension_element_sizes = {dimension: dimension_config[dimension]['dimension_element_size'] for dimension in dimensions}
         
+        # Convert scalars into tuples to allow point values instead of dimensional range tuples
+        for dimension in range_dimensions:
+            if not hasattr(range_dict[dimension], '__contains__'):
+                range_dict[dimension] = (range_dict[dimension] - storage_config['dimensions'][dimension]['dimension_element_size']/2,
+                                         range_dict[dimension] + storage_config['dimensions'][dimension]['dimension_element_size']/2
+                                         )
+        
+        
         # Default to all variables if none specified
         variable_names = data_request_descriptor.get('variables') or storage_config['measurement_types'].keys()
 
@@ -1299,6 +1326,8 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                            for dimension_index in range(len(dimensions))}
         logger.debug('index_range_dict = %s', index_range_dict)
         
+        nc_list = get_nc_list(storage_config['opendap_catalog']) if self._opendap else None
+        
         # Find all existing storage units in range and retrieve the indices in ranges for each dimension 
         subset_dict = collections.OrderedDict()
         dimension_index_dict = {dimension: set() for dimension in dimensions} # Dict containing set (converted to list) of unique indices for each dimension
@@ -1306,9 +1335,16 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         #TODO: Make this more targeted and efficient - OK for continuous ranges, but probably could do better
         for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions]):
             logger.debug('indices = %s', indices)
-            storage_path = self.get_storage_path(storage_type, indices)
+            
+            # Compose URL for OPeNDAP or pathname for filesystem access
+            if self._opendap:
+                storage_path = self.get_opendap_url(storage_type, indices)
+            else:
+                storage_path = self.get_storage_path(storage_type, indices)
+                
             logger.debug('Opening storage unit %s', storage_path)
-            if os.path.exists(storage_path):
+            if ((self._opendap and self.get_storage_filename(storage_type, indices) in nc_list) or 
+                (not self._opendap and os.path.exists(storage_path))):
                 gdfnetcdf = GDFNetCDF(storage_config, netcdf_filename=storage_path, decimal_places=GDF.DECIMAL_PLACES)
                 subset_indices = gdfnetcdf.get_subset_indices(range_dict)
                 if not subset_indices:
@@ -1321,6 +1357,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                     dimension_index_dict[dimension] |= set(dimension_indices.tolist())
                     
                 subset_dict[indices] = (gdfnetcdf, subset_indices)  
+            else:
+                logger.debug('storage unit %s does not exist.', storage_path)
+                
         logger.debug('%d storage units found', len(subset_dict))
         logger.debug('subset_dict = %s', subset_dict)
             
