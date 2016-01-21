@@ -448,6 +448,7 @@ select distinct
     storage_type_id,
     storage_type_name,
     storage_type_location,
+    storage_type_suffix,
     opendap_root,
     opendap_catalog,
     measurement_type_tag,
@@ -520,6 +521,7 @@ left join property using(property_id)
                                          'storage_type_id': record['storage_type_id'],
                                          'storage_type_name': record['storage_type_name'],
                                          'storage_type_location': record['storage_type_location'],
+                                         'storage_type_suffix': record['storage_type_suffix'],
                                          'opendap_root': record['opendap_root'],
                                          'opendap_catalog': record['opendap_catalog'],
                                          'measurement_types': collections.OrderedDict(),
@@ -1321,7 +1323,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
 
         # Create complete range dict with minmax tuples for every dimension, either calculated from supplied ranges or looked up from config if not supplied
         #TODO: Do something a bit nicer than the "- 0.000001" on the upper bound get the correct indices on storage unit boundaries
-        index_range_dict = {dimensions[dimension_index]: ((self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][0]),
+        index_range_dict = {dimensions[dimension_index]: ((None, None) 
+                                                          if dimension_config[dimensions[dimension_index]]['index_reference_system_id'] is None
+                                                          else (self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][0]),
                                                            self.ordinate2index(storage_type, dimensions[dimension_index], range_dict[dimensions[dimension_index]][1] - pow(0.1, GDF.DECIMAL_PLACES)))
                                                           if dimensions[dimension_index] in range_dimensions 
                                                           else (dimension_config[dimensions[dimension_index]]['min_index'], 
@@ -1365,7 +1369,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             else:
                 logger.debug('storage unit %s does not exist.', storage_path)
                 
-        logger.debug('%d storage units found', len(subset_dict))
+        logger.info('%d storage units accessible', len(subset_dict))
         logger.debug('subset_dict = %s', subset_dict)
             
         #TODO: Do this check more thoroughly
@@ -1482,14 +1486,13 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 selection.append(dimension_selection)
             logger.debug('selection = %s', selection)
             
+            # Read data into array for each variable
+            logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
             for variable_name in variable_names:
-                # Read data into array
-                read_array = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
-                logger.debug('read_array from %s = %s', gdfnetcdf.netcdf_filename, read_array)
-                logger.debug('read_array.shape from %s = %s', gdfnetcdf.netcdf_filename, read_array.shape)
-
-                logger.debug("result_dict['arrays'][variable_name][selection].shape = %s", result_dict['arrays'][variable_name][selection].shape)
-                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, range_dict)[0]
+                logger.info('Reading %s %s array', result_dict['arrays'][variable_name][selection].shape, variable_name)
+                t0 = datetime.now()
+                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
+                logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - t0)
         
         log_multiline(logger.debug, result_dict, 'result_dict', '\t')
         logger.debug('Result size = %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions))
