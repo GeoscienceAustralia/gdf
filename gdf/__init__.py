@@ -1489,7 +1489,6 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             # Read data into array for each variable
             logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
             for variable_name in variable_names:
-                logger.info('Reading %s %s array', result_dict['arrays'][variable_name][selection].shape, variable_name)
                 t0 = datetime.now()
                 result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
                 logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - t0)
