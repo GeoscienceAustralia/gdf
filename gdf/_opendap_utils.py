@@ -57,6 +57,8 @@ def get_nc_list(opendap_catalog_url):
     Parameter: opendap_catalog_url - string specifying URL of OPeNDAP catalogue
     '''
     data = urllib.urlopen(opendap_catalog_url).read()
+    logger.debug('data = %s', data)
+
     tree = lxml.html.fromstring(data)
 
     tables = []
@@ -67,4 +69,4 @@ def get_nc_list(opendap_catalog_url):
             text = [e.strip() for e in tr.xpath('.//text()') if len(e.strip()) > 0]
             tele.append(text)
     
-    return sorted([row[0] for row in tables[0] if re.match('.*\.nc$', row[0])])
+    return sorted([row[0] for row in tables[0] if re.match('.*\.nc', row[0])])

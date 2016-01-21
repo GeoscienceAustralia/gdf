@@ -40,7 +40,7 @@ from gdf import GDF
 
 def main():
     # Testing stuff
-    g = GDF()
+    g = GDF(opendap=True)
     # g.debug = True
     # pprint(g.storage_config['LS5TM'])
     # pprint(dict(g.storage_config['LS5TM']['dimensions']))

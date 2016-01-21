@@ -201,7 +201,7 @@ class GDF(object):
         return database_dict
         
 
-    def __init__(self, opendap=False):
+    def __init__(self, force_refresh=False, opendap=False):
         '''Constructor for class GDF
         Parameter: opendap - Boolean value indicating whether to use OPeNDAP endpoints
         '''
@@ -229,7 +229,7 @@ class GDF(object):
                 raise Exception('Unable to write to cache directory %s', self.cache_dir)
                     
         # Convert self.refresh to Boolean
-        self.refresh = self.debug or strtobool(self.refresh)
+        self.refresh = force_refresh or strtobool(self.refresh)
         
         # Force refresh if config has changed and OPeNDAP is not used
         try:
@@ -1157,11 +1157,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                                  )
         
         
-    def get_storage_filename(self, storage_type, storage_indices):
+    def get_storage_filename(self, storage_type, storage_indices, storage_suffix='.nc'):
         '''
         Function to return the filename for a storage unit file with the specified storage_type & storage_indices
         '''
-        return storage_type + '_' + '_'.join([str(index) for index in storage_indices]) + '.nc'
+        return storage_type + '_' + '_'.join([str(index) for index in storage_indices if index is not None]) + storage_suffix
     
     def get_storage_dir(self, storage_type, storage_indices):
         '''
@@ -1169,11 +1169,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         '''
         return os.path.join(self._storage_config[storage_type]['storage_type_location'], storage_type)
     
-    def get_storage_path(self, storage_type, storage_indices):
+    def get_storage_path(self, storage_type, storage_indices, storage_suffix='.nc'):
         '''
         Function to return the full path to a storage unit file with the specified storage_type & storage_indices
         '''
-        return os.path.join(self.get_storage_dir(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices))
+        return os.path.join(self.get_storage_dir(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices, storage_suffix))
     
     def get_opendap_root(self, storage_type, storage_indices):
         '''
@@ -1181,19 +1181,22 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         '''
         return self._storage_config[storage_type]['opendap_root']
     
-    def get_opendap_url(self, storage_type, storage_indices):
+    def get_opendap_url(self, storage_type, storage_indices, storage_suffix='.nc'):
         '''
         Function to return the full path to a storage unit file with the specified storage_type & storage_indices
         '''
-        return os.path.join(self.get_opendap_root(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices))
+        return os.path.join(self.get_opendap_root(storage_type, storage_indices), self.get_storage_filename(storage_type, storage_indices, storage_suffix))
        
     def ordinate2index(self, storage_type, dimension, ordinate):
         '''
         Return the storage unit index from the reference system ordinate for the specified storage type, ordinate value and dimension tag
         '''
-        if dimension == 'T':
+        index_reference_system_name = self.storage_config[storage_type]['dimensions'][dimension]['index_reference_system_name']
+        if index_reference_system_name is None:
+            return None
+        elif dimension == 'T':
             #TODO: Make this more general - need to cater for other reference systems besides seconds since epoch
-            index_reference_system_name = self.storage_config[storage_type]['dimensions']['T']['index_reference_system_name'].lower()
+            index_reference_system_name = index_reference_system_name.lower()
             logger.debug('index_reference_system_name = %s', index_reference_system_name)
             datetime_value = secs2dt(ordinate)
             if index_reference_system_name == 'decade':
@@ -1327,23 +1330,25 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         logger.debug('index_range_dict = %s', index_range_dict)
         
         nc_list = get_nc_list(storage_config['opendap_catalog']) if self._opendap else None
+        logger.debug('nc_list = %s', nc_list)
         
         # Find all existing storage units in range and retrieve the indices in ranges for each dimension 
         subset_dict = collections.OrderedDict()
         dimension_index_dict = {dimension: set() for dimension in dimensions} # Dict containing set (converted to list) of unique indices for each dimension
         # Iterate through all possible storage unit index combinations
         #TODO: Make this more targeted and efficient - OK for continuous ranges, but probably could do better
-        for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions]):
+        for indices in itertools.product(*[range(index_range_dict[dimension][0], index_range_dict[dimension][1]+1) for dimension in dimensions
+                                           if index_range_dict[dimension][0] is not None]):
             logger.debug('indices = %s', indices)
             
             # Compose URL for OPeNDAP or pathname for filesystem access
             if self._opendap:
-                storage_path = self.get_opendap_url(storage_type, indices)
+                storage_path = self.get_opendap_url(storage_type, indices, storage_config['storage_type_suffix'])
             else:
-                storage_path = self.get_storage_path(storage_type, indices)
+                storage_path = self.get_storage_path(storage_type, indices, storage_config['storage_type_suffix'])
                 
             logger.debug('Opening storage unit %s', storage_path)
-            if ((self._opendap and self.get_storage_filename(storage_type, indices) in nc_list) or 
+            if ((self._opendap and self.get_storage_filename(storage_type, indices, storage_config['storage_type_suffix']) in nc_list) or 
                 (not self._opendap and os.path.exists(storage_path))):
                 gdfnetcdf = GDFNetCDF(storage_config, netcdf_filename=storage_path, decimal_places=GDF.DECIMAL_PLACES)
                 subset_indices = gdfnetcdf.get_subset_indices(range_dict)
