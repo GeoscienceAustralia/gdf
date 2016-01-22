@@ -201,7 +201,7 @@ class GDF(object):
         return database_dict
         
 
-    def __init__(self, force_refresh=False, opendap=False):
+    def __init__(self, config=None, force_refresh=False, opendap=False, verbose=False):
         '''Constructor for class GDF
         Parameter: opendap - Boolean value indicating whether to use OPeNDAP endpoints
         '''
@@ -213,12 +213,13 @@ class GDF(object):
         self._command_line_params = self._get_command_line_params(GDF.ARG_DESCRIPTORS)
         
         self._debug = False
-        self.debug = self._command_line_params['debug']
+        self.debug = self._command_line_params['debug'] # Set property
         
         self._opendap = opendap
+        self._verbose = verbose
                 
         # Create master configuration dict containing both command line and config_file parameters
-        self._configuration = self._get_config(self._command_line_params['config_files'])       
+        self._configuration = self._get_config(config or self._command_line_params['config_files'])       
         
         self.cache_dir = self._command_line_params['cache_dir'] or self.cache_dir        
         if not directory_writable(self.cache_dir):
@@ -1369,7 +1370,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             else:
                 logger.debug('storage unit %s does not exist.', storage_path)
                 
-        logger.info('%d storage units accessible', len(subset_dict))
+        if self._verbose:
+            logger.info('%d storage units accessible', len(subset_dict))
+            
         logger.debug('subset_dict = %s', subset_dict)
             
         #TODO: Do this check more thoroughly
@@ -1461,6 +1464,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
 
         # Iterate through all storage units with data
         # TODO: Implement merging of multiple group layers. Current implemntation breaks when more than one layer per group
+        read_start_datetime = datetime.now()
         for indices in subset_dict.keys():
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
@@ -1487,12 +1491,18 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             logger.debug('selection = %s', selection)
             
             # Read data into array for each variable
-            logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
+            if self._verbose:
+                logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
+                
             for variable_name in variable_names:
-                t0 = datetime.now()
+                variable_read_start_datetime = datetime.now()
                 result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
-                logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - t0)
+                if self._verbose:
+                    logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - variable_read_start_datetime)
         
+        if self._verbose:
+            logger.info('Complete %s result read in %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions), datetime.now() - read_start_datetime)
+            
         log_multiline(logger.debug, result_dict, 'result_dict', '\t')
         logger.debug('Result size = %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions))
         
