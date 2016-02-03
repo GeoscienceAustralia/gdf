@@ -1503,7 +1503,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 variable_read_start_datetime = datetime.now()
                 result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict, max_bytes)[0]
                 if self._verbose:
-                    logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - variable_read_start_datetime)
+                    logger.info('Read %s %s array (%s Bytes) in %s',
+                                result_dict['arrays'][variable_name][selection].shape,
+                                variable_name,
+                                result_dict['arrays'][variable_name][selection].itemsize * reduce(lambda x, y: x*y, result_dict['arrays'][variable_name][selection].shape),
+                                datetime.now() - variable_read_start_datetime)
         
         if self._verbose:
             logger.info('Complete %s result read in %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions), datetime.now() - read_start_datetime)
