@@ -418,16 +418,20 @@ class GDFNetCDF(object):
             subset_array = variable[slicing]
         else: # Break read operation into separate reads each under maximum size
             #TODO: Allow for case where slice size is greater than max_bytes - i.e. partitioning in more than one dimension
-            subset_shape = tuple([s.stop - s.start - 1 for s in slicing])
-            slice_bytes = variable.itemsize() * reduce(lambda x, y: x*y, [s.stop - s.start - 1 for s in slicing[1:]])
-            max_slices = max_bytes // slice_bytes
-            
-            subset_array = np.array(shape=subset_shape, dtype=variable.dtype)
+            subset_shape = tuple([s.stop - s.start for s in slicing])
+            logger.debug('subset_shape = %s', subset_shape)
+
+            slice_bytes = variable[[slice(0,1) for dimension in dimension_names]].itemsize * reduce(lambda x, y: x*y, [s.stop - s.start - 1 for s in slicing[1:]])
+            max_slices = max_bytes // slice_bytes // self.storage_config['dimensions'][dimensions[0]]['dimension_cache'] * self.storage_config['dimensions'][dimensions[0]]['dimension_cache']
+            logger.debug('max_slices = %s', max_slices)
+
+            subset_array = np.zeros(shape=subset_shape, dtype=variable.dtype)
             
             for source_start_index in range(slicing[0].start, slicing[0].stop, max_slices):
                 source_stop_index = min([source_start_index + max_slices, slicing[0].stop])
                 source_slicing = [slice(source_start_index, source_stop_index)] + slicing[1:]
-                destination_slicing = slice(source_start_index - slicing[0].start, source_stop_index - slicing[0].start)
+                destination_slicing = [slice(source_slicing[slice_index].start - slicing[slice_index].start, source_slicing[slice_index].stop - slicing[slice_index].start)
+                                       for slice_index in range(len(source_slicing))]
                 
                 logger.debug('source_slicing = %s', source_slicing)
                 logger.debug('destination_slicing = %s', destination_slicing)

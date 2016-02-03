@@ -93,6 +93,7 @@ class GDF(object):
                                 }
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
+    MAX_OPENDAP_BYTES = 480000000
     
     def _cache_object(self, cached_object, cache_filename):
         '''
@@ -1312,7 +1313,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         dimension_element_sizes = {dimension: dimension_config[dimension]['dimension_element_size'] for dimension in dimensions}
         
         # Set maximum size for individual OPeNDAP queries
-        max_bytes = 500000000 if self.opendap else None
+        max_bytes = self.MAX_OPENDAP_BYTES if self._opendap else None
                   
         # Convert scalars into tuples to allow point values instead of dimensional range tuples
         for dimension in range_dimensions:
