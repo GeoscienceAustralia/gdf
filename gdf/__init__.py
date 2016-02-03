@@ -1334,7 +1334,8 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                            for dimension_index in range(len(dimensions))}
         logger.debug('index_range_dict = %s', index_range_dict)
         
-        nc_list = get_nc_list(storage_config['opendap_catalog']) if self._opendap else None
+        nc_list = get_nc_list(storage_config['opendap_catalog'],
+                              storage_config['storage_type_suffix']) if self._opendap else None
         logger.debug('nc_list = %s', nc_list)
         
         # Find all existing storage units in range and retrieve the indices in ranges for each dimension 

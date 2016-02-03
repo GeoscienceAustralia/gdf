@@ -51,7 +51,7 @@ except:
     logger.warning('WARNING: Unable to import lxml.html. Any OPeNDAP function calls will fail.')
 
 
-def get_nc_list(opendap_catalog_url):
+def get_nc_list(opendap_catalog_url, endpoint_suffix='.nc'):
     '''
     get_dataset_list - function to parse specified OPeNDAP catalogue URL and return a list of dataset names.
     Parameter: opendap_catalog_url - string specifying URL of OPeNDAP catalogue
@@ -69,4 +69,7 @@ def get_nc_list(opendap_catalog_url):
             text = [e.strip() for e in tr.xpath('.//text()') if len(e.strip()) > 0]
             tele.append(text)
     
-    return sorted([row[0] for row in tables[0] if re.match('.*\.nc', row[0])])
+    try:
+      return sorted([row[0] for row in tables[0] if re.match('.*\%s$' % endpoint_suffix, row[0])])
+    except Exception, e:
+      raise Exception("Invalid catalogue %s: %s" % (opendap_catalog_url, e.message))
