@@ -1311,6 +1311,9 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         range_dimensions = [dimension for dimension in dimensions if dimension in range_dict.keys()] # Range dimensions in order
         dimension_element_sizes = {dimension: dimension_config[dimension]['dimension_element_size'] for dimension in dimensions}
         
+        # Set maximum size for individual OPeNDAP queries
+        max_bytes = 500000000 if self.opendap else None
+                  
         # Convert scalars into tuples to allow point values instead of dimensional range tuples
         for dimension in range_dimensions:
             if not hasattr(range_dict[dimension], '__contains__'):
@@ -1497,7 +1500,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 
             for variable_name in variable_names:
                 variable_read_start_datetime = datetime.now()
-                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict)[0]
+                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict, max_bytes)[0]
                 if self._verbose:
                     logger.info('Read %s %s array in %s', result_dict['arrays'][variable_name][selection].shape, variable_name, datetime.now() - variable_read_start_datetime)
         
