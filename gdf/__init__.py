@@ -1320,7 +1320,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             
             # Read data into array for each variable
             if self._verbose:
-                logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
+                logger.info('Reading arrays from %s in pid %s', gdfnetcdf.netcdf_filename, os.getpid())
                 
             for variable_name in variable_names:
                 array_name = '_'.join([variable_name, pid_string])
@@ -1532,8 +1532,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
             
-            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
+            p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
+            p.start()
+#            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
                                                            
+        p.join()
         
         for variable_name in variable_names:
             sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect 
