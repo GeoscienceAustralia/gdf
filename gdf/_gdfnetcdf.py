@@ -421,8 +421,12 @@ class GDFNetCDF(object):
             subset_shape = tuple([s.stop - s.start for s in slicing])
             logger.debug('subset_shape = %s', subset_shape)
 
-            slice_bytes = variable[[slice(0,1) for dimension in dimension_names]].itemsize * reduce(lambda x, y: x*y, [s.stop - s.start - 1 for s in slicing[1:]])
-            max_slices = max_bytes // slice_bytes // self.storage_config['dimensions'][dimensions[0]]['dimension_cache'] * self.storage_config['dimensions'][dimensions[0]]['dimension_cache']
+            slice_bytes = variable[[slice(0,1) for dimension in dimension_names]].itemsize * reduce(lambda x, y: x*y, [s.stop - s.start for s in slicing[1:]])
+            max_slices = (max_bytes // 
+                             slice_bytes // 
+                             self.storage_config['dimensions'][dimensions[0]]['dimension_cache'] * 
+                             self.storage_config['dimensions'][dimensions[0]]['dimension_cache'])
+            
             logger.debug('max_slices = %s', max_slices)
 
             subset_array = np.zeros(shape=subset_shape, dtype=variable.dtype)
