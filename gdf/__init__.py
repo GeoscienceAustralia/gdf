@@ -49,6 +49,12 @@ from pprint import pprint
 from math import floor
 from distutils.util import strtobool
 
+from multiprocessing import Process, Lock
+from multiprocessing.sharedctypes import Value, Array
+from ctypes import Structure, c_double
+import SharedArray as sa
+
+
 # Set handler for root logger to standard output
 console_handler = logging.StreamHandler(sys.stdout)
 #console_handler.setLevel(logging.INFO)
@@ -1288,6 +1294,47 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             ]
         }
         '''
+        
+        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes):
+
+            # Create selection slices to 
+            selection = []
+            for dimension in dimensions:
+                dimension_indices =  np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
+                logger.debug('%s dimension_indices = %s', dimension, dimension_indices)
+
+                logger.debug('result_array_indices[%s] = %s', dimension, result_array_indices[dimension])
+                if dimension in grouping_function_dict.keys():
+#                    logger.debug('Un-grouped %s min_index_value = %s, max_index_value = %s', dimension, min_index_value, max_index_value)
+                    subset_group_values = grouped_value_dict[dimension][np.in1d(ungrouped_value_dict[dimension], dimension_indices)] # Convert raw time values to group values
+                    logger.debug('%s subset_group_values = %s', dimension, subset_group_values)
+                    dimension_selection = np.in1d(result_array_indices[dimension], subset_group_values) # Boolean array mask for result array
+                    logger.debug('%s dimension_selection = %s', dimension, dimension_selection)
+                else:   
+                    dimension_selection = np.in1d(result_array_indices[dimension], dimension_indices) # Boolean array mask for result array
+                    logger.debug('%s boolean dimension_selection = %s', dimension, dimension_selection)
+                    dimension_selection = slice(np.where(dimension_selection)[0][0], np.where(dimension_selection)[0][-1] + 1)
+                    logger.debug('%s slice dimension_selection = %s', dimension, dimension_selection)
+                selection.append(dimension_selection)
+            logger.debug('selection = %s', selection)
+            
+            # Read data into array for each variable
+            if self._verbose:
+                logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
+                
+            for variable_name in variable_names:
+                array_name = '_'.join([variable_name, pid_string])
+                result_array = sa.attach(array_name) # Reference array in Posix shared memory
+                variable_read_start_datetime = datetime.now()
+                result_array[selection] = gdfnetcdf.read_subset(variable_name, range_dict, max_bytes)[0]
+                if self._verbose:
+                    logger.info('Read %s %s array (%s Bytes) in %s',
+                                result_array[selection].shape,
+                                variable_name,
+                                result_array.itemsize * reduce(lambda x, y: x*y, result_array[selection].shape),
+                                datetime.now() - variable_read_start_datetime)
+            # End of function read_storage_unit
+        
         storage_type = data_request_descriptor['storage_type'] 
         
         # Convert dimension tags to upper case
@@ -1458,57 +1505,39 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         # Create empty composite result arrays
         array_shape = [len(result_array_indices[dimension]) for dimension in dimensions]
         logger.debug('array_shape = %s', array_shape)
-
+        
+        pid_string = str(os.getpid())
+        
         for variable_name in variable_names:
             dtype = storage_config['measurement_types'][variable_name]['numpy_datatype_name']
             logger.debug('%s dtype = %s', variable_name, dtype)
 
             #TODO: Do something better for variables with no no-data value specified (e.g. PQ)
             nodata_value = storage_config['measurement_types'][variable_name]['nodata_value'] or 0
-            result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
+#            result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
+
+            array_name = '_'.join([variable_name, pid_string])
+            sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
+            
+            result_dict['arrays'][variable_name] = sa.attach(array_name)
+            #TODO: Fix this ugly hack
+            result_dict['arrays'][variable_name][:] = nodata_value
 
         # Iterate through all storage units with data
         # TODO: Implement merging of multiple group layers. Current implemntation breaks when more than one layer per group
         read_start_datetime = datetime.now()
+        
         for indices in subset_dict.keys():
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
-                                                           
-            selection = []
-            for dimension in dimensions:
-                dimension_indices =  np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
-                logger.debug('%s dimension_indices = %s', dimension, dimension_indices)
-
-                logger.debug('result_array_indices[%s] = %s', dimension, result_array_indices[dimension])
-                if dimension in grouping_function_dict.keys():
-#                    logger.debug('Un-grouped %s min_index_value = %s, max_index_value = %s', dimension, min_index_value, max_index_value)
-                    subset_group_values = grouped_value_dict[dimension][np.in1d(ungrouped_value_dict[dimension], dimension_indices)] # Convert raw time values to group values
-                    logger.debug('%s subset_group_values = %s', dimension, subset_group_values)
-                    dimension_selection = np.in1d(result_array_indices[dimension], subset_group_values) # Boolean array mask for result array
-                    logger.debug('%s dimension_selection = %s', dimension, dimension_selection)
-                else:   
-                    dimension_selection = np.in1d(result_array_indices[dimension], dimension_indices) # Boolean array mask for result array
-                    logger.debug('%s boolean dimension_selection = %s', dimension, dimension_selection)
-                    dimension_selection = slice(np.where(dimension_selection)[0][0], np.where(dimension_selection)[0][-1] + 1)
-                    logger.debug('%s slice dimension_selection = %s', dimension, dimension_selection)
-                selection.append(dimension_selection)
-            logger.debug('selection = %s', selection)
             
-            # Read data into array for each variable
-            if self._verbose:
-                logger.info('Reading arrays from %s', gdfnetcdf.netcdf_filename)
-                
-            for variable_name in variable_names:
-                variable_read_start_datetime = datetime.now()
-                result_dict['arrays'][variable_name][selection] = gdfnetcdf.read_subset(variable_name, restricted_range_dict, max_bytes)[0]
-                if self._verbose:
-                    logger.info('Read %s %s array (%s Bytes) in %s',
-                                result_dict['arrays'][variable_name][selection].shape,
-                                variable_name,
-                                result_dict['arrays'][variable_name][selection].itemsize * reduce(lambda x, y: x*y, result_dict['arrays'][variable_name][selection].shape),
-                                datetime.now() - variable_read_start_datetime)
+            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
+                                                           
         
+        for variable_name in variable_names:
+            sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect 
+
         if self._verbose:
             logger.info('Complete %s result read in %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions), datetime.now() - read_start_datetime)
             
