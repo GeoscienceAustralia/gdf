@@ -1527,16 +1527,20 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         # TODO: Implement merging of multiple group layers. Current implemntation breaks when more than one layer per group
         read_start_datetime = datetime.now()
         
+        process_list = []
         for indices in subset_dict.keys():
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
             
             p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
+            process_list.append(p)
             p.start()
 #            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
                                                            
-        p.join()
+        # Wait for all processes to finish here
+        for p in process_list:
+            p.join()
         
         for variable_name in variable_names:
             sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect 
