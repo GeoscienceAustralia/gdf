@@ -7,10 +7,10 @@ version = '0.0.0'
 setup(name='agdc-v2',
       version=version,
       packages=[
-          'gdf',
-          'analytics',
-          'analytics_utils',
-          'execution_engine',
+#          'analytics',
+#          'analytics_utils',
+#          'execution_engine',
+          'gdf'
       ],
       package_data={
           'gdf': ['gdf_default.conf']
@@ -18,20 +18,25 @@ setup(name='agdc-v2',
       scripts=[
       ],
       requires=[
+          'cython',
           'psycopg2',
           'gdal',
           'numexpr',
           'numpy',
-          'matplotlib',
+          'h5py',
           'netcdf4',
           'scipy',
-          'pytz'
+          'pytz',
+#          'matplotlib',
+#          'xray',
+#          'dask',
+          'SharedArray'
       ],
-      url='https://github.com/data-cube/agdc-v2',
-      author='AGDC Collaboration',
-      maintainer='AGDC Collaboration',
-      maintainer_email='',
-      description='AGDC v2',
-      long_description='Australian Geoscience Data Cube v2',
+      url='https://github.com/GeoscienceAustralia/gdf',
+      author='Alex Ip - Geoscience Australia',
+      maintainer='Alex Ip - Geoscience Australia',
+      maintainer_email='alex.ip@ga.gov.au',
+      description='Generalised Data Framework',
+      long_description='Generalised Data Framework',
       license='Apache License 2.0'
       )

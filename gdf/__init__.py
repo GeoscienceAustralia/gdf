@@ -48,10 +48,7 @@ import itertools
 from pprint import pprint
 from math import floor
 from distutils.util import strtobool
-
 from multiprocessing import Process, Lock
-from multiprocessing.sharedctypes import Value, Array
-from ctypes import Structure, c_double
 import SharedArray as sa
 
 
