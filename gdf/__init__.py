@@ -1499,17 +1499,10 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         
         purge_dimension_index = dimensions.index(purge_dimension)
         logger.debug('purge_dimension_index = %s', purge_dimension_index)
-<<<<<<< HEAD
 
         index_vector = data_dict['indices'][purge_dimension]
         logger.debug('index_vector = %s', index_vector)
 
-=======
-
-        index_vector = data_dict['indices'][purge_dimension]
-        logger.debug('index_vector = %s', index_vector)
-
->>>>>>> e21e756... purge_empty_layers function debugged and now working.
         axis_tuple = tuple([index for index in range(len(dimensions)) if index != purge_dimension_index]) # Tuple containing indices of all dimensions other than purge_dimension
         logger.debug('axis_tuple = %s', axis_tuple)
 
