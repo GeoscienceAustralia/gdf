@@ -1461,7 +1461,10 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
 
         # Create composite result array indices either from result_grouped_value_dict if irregular & grouped or created as a range if regular
         result_array_indices = {dimension: (np.array(result_grouped_value_dict[dimension]) if dimension in result_grouped_value_dict.keys()
-                                            else np.around(np.arange(dimension_index_dict[dimension][0], dimension_index_dict[dimension][-1] + pow(0.1, GDF.DECIMAL_PLACES), dimension_element_sizes[dimension]), GDF.DECIMAL_PLACES))
+#                                            else np.around(np.arange(dimension_index_dict[dimension][0], dimension_index_dict[dimension][-1] + pow(0.1, GDF.DECIMAL_PLACES), dimension_element_sizes[dimension]), GDF.DECIMAL_PLACES))
+                                            else np.around(np.linspace(dimension_index_dict[dimension][0], dimension_index_dict[dimension][-1], 
+                                                                    (dimension_index_dict[dimension][-1] - dimension_index_dict[dimension][0]) / dimension_element_sizes[dimension]), 
+                                                           self.decimal_places))
                                 for dimension in dimensions}
         
         # Reverse any indices with reverse_index flag set
