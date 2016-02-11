@@ -45,6 +45,7 @@ import numexpr
 import logging
 import cPickle
 import itertools
+import time
 from pprint import pprint
 from math import floor
 from distutils.util import strtobool
@@ -94,6 +95,7 @@ class GDF(object):
                                     'help': 'Cache directory for GDF operation'
                                     },
                                 }
+    PARALLEL = False
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
     MAX_OPENDAP_BYTES = 480000000
@@ -1293,7 +1295,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         }
         '''
         
-        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes):
+        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_array=None):
 
             # Create selection slices to 
             selection = []
@@ -1321,8 +1323,10 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 logger.info('Reading arrays from %s in pid %s', gdfnetcdf.netcdf_filename, os.getpid())
                 
             for variable_name in variable_names:
-                array_name = '_'.join([variable_name, pid_string])
-                result_array = sa.attach(array_name) # Reference array in Posix shared memory
+                if result_array is None:
+                    array_name = '_'.join([variable_name, pid_string])
+                    result_array = sa.attach(array_name) # Reference array in Posix shared memory
+                    
                 variable_read_start_datetime = datetime.now()
                 result_array[selection] = gdfnetcdf.read_subset(variable_name, range_dict, max_bytes)[0]
                 if self._verbose:
@@ -1515,13 +1519,40 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
 
             #TODO: Do something better for variables with no no-data value specified (e.g. PQ)
             nodata_value = storage_config['measurement_types'][variable_name]['nodata_value'] or 0
-#            result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
-
-            array_name = '_'.join([variable_name, pid_string])
-            sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
             
-            result_dict['arrays'][variable_name] = sa.attach(array_name)
-            #TODO: Fix this ugly hack
+            if GDF.PARALLEL:
+                array_name = '_'.join([variable_name, pid_string])
+                
+                #TODO: Remove this ugly hack for slow machines
+                retries = 0
+                while array_name not in sa.list():
+                    sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
+                    logger.info('sa.list = %s', sa.list())
+                    if array_name not in sa.list() and retries < 5:
+                        logger.warning('%s not registered in shared array list', array_name)
+                        retries += 1
+                        time.sleep(0.5)
+                    else:
+                        raise Exception('Failed to create shared array %s' % array_name)    
+                
+                #TODO: Remove this ugly hack for slow machines
+                result_dict['arrays'][variable_name] = None
+                retries = 0
+                while result_dict['arrays'][variable_name] is None:
+                    try:
+                        result_dict['arrays'][variable_name] = sa.attach(array_name)
+                    except Exception, e:
+                        if retries < 5:
+                            retries += 1
+                            logger.warning('Unable to attach to shared array %s: %s', array_name, e.message)
+                            time.sleep(0.5)
+                        else:
+                            logger.error('Failed to attach to shared array %s', array_name)
+                            raise     
+
+            else:
+                result_dict['arrays'][variable_name] = np.ones(shape=array_shape, dtype=dtype) * nodata_value
+
             result_dict['arrays'][variable_name][:] = nodata_value
 
         # Iterate through all storage units with data
@@ -1533,19 +1564,21 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
-            
-            p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
-            process_list.append(p)
-            p.start()
-#            read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)
+            if GDF.PARALLEL:
+                p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
+                process_list.append(p)
+                p.start()
+            else:
+                read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'][variable_name])
                                                            
         # Wait for all processes to finish here
-        for p in process_list:
-            p.join()
+        if GDF.PARALLEL:
+            for p in process_list:
+                p.join()
         
-        for variable_name in variable_names:
-            sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect 
-
+            for variable_name in variable_names:
+                sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect result_dict['arrays'][variable_name]
+    
         if self._verbose:
             logger.info('Complete %s result read in %s', tuple(len(result_array_indices[dimension]) for dimension in dimensions), datetime.now() - read_start_datetime)
             
