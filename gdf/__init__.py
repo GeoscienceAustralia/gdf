@@ -1522,18 +1522,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             
             if GDF.PARALLEL:
                 array_name = '_'.join([variable_name, pid_string])
-                
-                #TODO: Remove this ugly hack for slow machines
-                retries = 0
-                while array_name not in sa.list():
-                    sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
-                    logger.info('sa.list = %s', sa.list())
-                    if array_name not in sa.list() and retries < 5:
-                        logger.warning('%s not registered in shared array list', array_name)
-                        retries += 1
-                        time.sleep(0.5)
-                    else:
-                        raise Exception('Failed to create shared array %s' % array_name)    
+                sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
                 
                 #TODO: Remove this ugly hack for slow machines
                 result_dict['arrays'][variable_name] = None
