@@ -95,7 +95,7 @@ class GDF(object):
                                     'help': 'Cache directory for GDF operation'
                                     },
                                 }
-    PARALLEL = False
+    PARALLEL = True
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
     MAX_OPENDAP_BYTES = 480000000
