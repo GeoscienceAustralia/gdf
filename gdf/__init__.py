@@ -1295,9 +1295,19 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         }
         '''
         
-        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_array=None):
-
-            # Create selection slices to 
+        def read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_arrays=None):
+            '''
+            Function to read individual pieces from storage unit and write them into composite in-memory arrays. Used for parallel or serial execution.
+            Arguments:
+                pid_string: string used to generate unique named pipes for previously created shared arrays. Only used for parallel operation.
+                subset_indices: Indices for subset previously read from GDFNetCDF storage unit object
+                gdfnetcdf: GDFNetCDF storage unit object
+                variable_names: List of variable names to be read from storage units
+                range_dict: Dict keyed by dimension containing overall dimensional range tuples for subset required
+                max_bytes: Maximum number of bytes which can be retrieved in a single read operation. Used for OPeNDAP queries
+                result_arrays: Dict keyed by variable name containing result arrays for each variable read. Used only for serial operation instead of shared arrays
+            '''
+            # Create selection slices to read required subsets from storage unit
             selection = []
             for dimension in dimensions:
                 dimension_indices =  np.around(subset_indices[dimension], GDF.DECIMAL_PLACES)
@@ -1323,9 +1333,11 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 logger.info('Reading arrays from %s in pid %s', gdfnetcdf.netcdf_filename, os.getpid())
                 
             for variable_name in variable_names:
-                if result_array is None:
+                if result_arrays is None:
                     array_name = '_'.join([variable_name, pid_string])
                     result_array = sa.attach(array_name) # Reference array in Posix shared memory
+                else:
+                    result_array = result_arrays[variable_name]
                     
                 variable_read_start_datetime = datetime.now()
                 result_array[selection] = gdfnetcdf.read_subset(variable_name, range_dict, max_bytes)[0]
@@ -1558,7 +1570,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 process_list.append(p)
                 p.start()
             else:
-                read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'][variable_name])
+                read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'])
                                                            
         # Wait for all processes to finish here
         if GDF.PARALLEL:

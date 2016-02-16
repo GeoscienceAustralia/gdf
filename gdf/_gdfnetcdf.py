@@ -38,6 +38,7 @@ import netCDF4
 import numpy as np
 import re
 import logging
+import time
 from osgeo import osr
 from datetime import datetime
 
@@ -56,6 +57,9 @@ class GDFNetCDF(object):
     '''
     Class GDFNetCDF - Class to manage GDF netCDF storage units
     '''
+    MAX_RETRIES=5
+    RETRY_DELAY=0.5
+
     def __init__(self, storage_config, netcdf_filename=None, netcdf_mode=None, netcdf_format=None, decimal_places=None):
         '''
         Constructor for class GDFNetCDF
@@ -338,7 +342,21 @@ class GDFNetCDF(object):
         dimension_indices_dict = {} # Dict containing all indices for each dimension
         for dimension_index in range(len(dimensions)):
             dimension = dimensions[dimension_index]
-            dimension_array = self.netcdf_object.variables[dimension_names[dimension_index]][:]
+
+            retries = 0
+            read_pending = True
+            while read_pending:
+                try:
+                    dimension_array = self.netcdf_object.variables[dimension_names[dimension_index]][:]
+                    read_pending = False
+                except:
+                    retries += 1
+                    if retries < GDFNetCDF.MAX_RETRIES:
+                        logger.warning('Failed to read index - retrying')
+                        time.sleep(GDFNetCDF.RETRY_DELAY)
+                    else:
+                        raise
+
             if dimension in range_dimensions:
                 logger.debug('dimension_array = %s', dimension_array)
                 logger.debug('range = %s', range_dict[dimension])
@@ -388,7 +406,21 @@ class GDFNetCDF(object):
         slicing = []
         for dimension_index in range(len(dimensions)):
             dimension = dimensions[dimension_index]
-            dimension_array = self.netcdf_object.variables[dimension_names[dimension_index]][:]
+
+            retries = 0
+            read_pending = True
+            while read_pending:
+                try:
+                    dimension_array = self.netcdf_object.variables[dimension_names[dimension_index]][:]
+                    read_pending = False
+                except:
+                    retries += 1
+                    if retries < GDFNetCDF.MAX_RETRIES:
+                        logger.warning('Failed to read index - retrying')
+                        time.sleep(GDFNetCDF.RETRY_DELAY)
+                    else:
+                        raise
+
             if dimension in range_dimensions:
                 logger.debug('dimension_array = %s', dimension_array)
                 logger.debug('range = %s', range_dict[dimension])
@@ -437,7 +469,19 @@ class GDFNetCDF(object):
                 logger.debug('source_slicing = %s', source_slicing)
                 logger.debug('destination_slicing = %s', destination_slicing)
                 
-                subset_array[destination_slicing] = variable[source_slicing]
+                retries = 0
+                read_pending = True
+                while read_pending:
+                    try:
+                        subset_array[destination_slicing] = variable[source_slicing]
+                        read_pending = False
+                    except:
+                        retries += 1
+                        if retries < GDFNetCDF.MAX_RETRIES:
+                            logger.warning('Failed to read data - retrying')
+                            time.sleep(GDFNetCDF.RETRY_DELAY)
+                        else:
+                            raise
         
         logger.debug('subset_array = %s', subset_array)
         return subset_array, dimension_indices_dict
