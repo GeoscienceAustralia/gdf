@@ -95,7 +95,6 @@ class GDF(object):
                                     'help': 'Cache directory for GDF operation'
                                     },
                                 }
-    PARALLEL = True
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
     MAX_OPENDAP_BYTES = 480000000
@@ -207,9 +206,12 @@ class GDF(object):
         return database_dict
         
 
-    def __init__(self, config=None, force_refresh=False, opendap=False, verbose=False):
+    def __init__(self, config=None, force_refresh=False, parallel=True, opendap=False, verbose=False):
         '''Constructor for class GDF
-        Parameter: opendap - Boolean value indicating whether to use OPeNDAP endpoints
+        Parameters:
+            parallel - Boolean value indicating whether to use multiprocessing with SharedArrays (Problematic for OSGeo VM)
+            opendap - Boolean value indicating whether to use OPeNDAP endpoints
+            verbose - Boolean value indicating whether to log extra info for each individual read operation
         '''
         self._config_files = [] # List of config files read
         
@@ -221,6 +223,7 @@ class GDF(object):
         self._debug = False
         self.debug = self._command_line_params['debug'] # Set property
         
+        self._parallel = parallel
         self._opendap = opendap
         self._verbose = verbose
                 
@@ -1532,7 +1535,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             #TODO: Do something better for variables with no no-data value specified (e.g. PQ)
             nodata_value = storage_config['measurement_types'][variable_name]['nodata_value'] or 0
             
-            if GDF.PARALLEL:
+            if self._parallel:
                 array_name = '_'.join([variable_name, pid_string])
                 sa.create(array_name, shape=array_shape, dtype=dtype) # Create array in Posix shared memory
                 
@@ -1542,13 +1545,16 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 while result_dict['arrays'][variable_name] is None:
                     try:
                         result_dict['arrays'][variable_name] = sa.attach(array_name)
-                    except Exception, e:
-                        if retries < 5:
-                            retries += 1
-                            logger.warning('Unable to attach to shared array %s: %s', array_name, e.message)
-                            time.sleep(0.5)
+                    except OSError as e:
+                        if e.errno == 11:
+                            if retries < 5:
+                                retries += 1
+                                logger.warning('Unable to attach to shared array %s: %s', array_name, e.message)
+                                time.sleep(0.5)
+                            else:
+                                logger.error('Failed to attach to shared array %s', array_name)
+                                raise     
                         else:
-                            logger.error('Failed to attach to shared array %s', array_name)
                             raise     
 
             else:
@@ -1565,7 +1571,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
-            if GDF.PARALLEL:
+            if self._parallel:
                 p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
                 process_list.append(p)
                 p.start()
@@ -1573,7 +1579,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'])
                                                            
         # Wait for all processes to finish here
-        if GDF.PARALLEL:
+        if self._parallel:
             for p in process_list:
                 p.join()
         
