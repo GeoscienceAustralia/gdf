@@ -49,7 +49,7 @@ import time
 from pprint import pprint
 from math import floor
 from distutils.util import strtobool
-from multiprocessing import Process, Lock
+from multiprocessing import Process, Lock, Pool, cpu_count
 import SharedArray as sa
 
 
@@ -98,6 +98,8 @@ class GDF(object):
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
     MAX_OPENDAP_BYTES = 480000000
+    TIMEOUT = 120 # Seconds to wait for a process to finish
+    PROCESSES_PER_CPU = 2
     
     def _cache_object(self, cached_object, cache_filename):
         '''
@@ -1566,22 +1568,21 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
         # TODO: Implement merging of multiple group layers. Current implemntation breaks when more than one layer per group
         read_start_datetime = datetime.now()
         
-        process_list = []
+        pool = Pool(processes=GDF.PROCESSES_PER_CPU*cpu_count())
+        result_list = []
         for indices in subset_dict.keys():
             # Unpack tuple
             gdfnetcdf = subset_dict[indices][0]
             subset_indices = subset_dict[indices][1] 
             if self._parallel:
-                p = Process(target=read_storage_unit, args=(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes))
-                process_list.append(p)
-                p.start()
+                result_list.append(pool.apply_async(read_storage_unit, (pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)))
             else:
                 read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'])
                                                            
         # Wait for all processes to finish here
         if self._parallel:
-            for p in process_list:
-                p.join()
+            for result in result_list:
+                result.wait(timeout=GDF.TIMEOUT)
         
             for variable_name in variable_names:
                 sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect result_dict['arrays'][variable_name]
