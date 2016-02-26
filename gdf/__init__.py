@@ -98,7 +98,7 @@ class GDF(object):
     MAX_UNITS_IN_MEMORY = 1000 #TODO: Do something better than this
     DECIMAL_PLACES = 6
     MAX_OPENDAP_BYTES = 480000000
-    TIMEOUT = 120 # Seconds to wait for a process to finish
+    TIMEOUT = 300 # Seconds to wait for a process to finish
     PROCESSES_PER_CPU = 2
     
     def _cache_object(self, cached_object, cache_filename):
@@ -1547,6 +1547,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
                 while result_dict['arrays'][variable_name] is None:
                     try:
                         result_dict['arrays'][variable_name] = sa.attach(array_name)
+                        logger.debug('Attached to shared array %s', array_name)
                     except OSError as e:
                         if e.errno == 11:
                             if retries < 5:
@@ -1576,14 +1577,23 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             subset_indices = subset_dict[indices][1] 
             if self._parallel:
                 result_list.append(pool.apply_async(read_storage_unit, (pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)))
+                logger.debug('Launched process to read from storage unit %s', gdfnetcdf.netcdf_filename)
             else:
                 read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'])
+                logger.debug('Reading from storage unit %s', gdfnetcdf.netcdf_filename)
                                                            
         # Wait for all processes to finish here
         if self._parallel:
-            for result in result_list:
-                result.wait(timeout=GDF.TIMEOUT)
-        
+            for result_index in range(len(result_list)):
+                if not result_list[result_index].ready():
+                    logger.debug("Waiting for process #%s to finish", result_index+1)
+                    result_list[result_index].ready().wait(timeout=GDF.TIMEOUT)
+                logger.debug("Process #%s finished", result_index+1)
+
+            pool.close()
+            pool.join()
+            logger.debug("All processes completed.")
+
             for variable_name in variable_names:
                 sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect result_dict['arrays'][variable_name]
     
