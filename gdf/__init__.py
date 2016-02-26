@@ -1587,7 +1587,7 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             for result_index in range(len(result_list)):
                 if not result_list[result_index].ready():
                     logger.debug("Waiting for process #%s to finish", result_index+1)
-                    result_list[result_index].ready().wait(timeout=GDF.TIMEOUT)
+                    result_list[result_index].wait(timeout=GDF.TIMEOUT)
                 logger.debug("Process #%s finished", result_index+1)
 
             pool.close()
