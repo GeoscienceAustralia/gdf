@@ -1577,22 +1577,27 @@ order by ''' + '_index, '.join(storage_type_dimensions) + '''_index, slice_index
             subset_indices = subset_dict[indices][1] 
             if self._parallel:
                 result_list.append(pool.apply_async(read_storage_unit, (pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes)))
-                logger.debug('Launched process to read from storage unit %s', gdfnetcdf.netcdf_filename)
+                if self._verbose:
+                    logger.info('Launched process to read from storage unit %s', gdfnetcdf.netcdf_filename)
             else:
                 read_storage_unit(pid_string, subset_indices, gdfnetcdf, variable_names, range_dict, max_bytes, result_dict['arrays'])
-                logger.debug('Reading from storage unit %s', gdfnetcdf.netcdf_filename)
+                if self._verbose:
+                    logger.info('Reading from storage unit %s', gdfnetcdf.netcdf_filename)
                                                            
         # Wait for all processes to finish here
         if self._parallel:
             for result_index in range(len(result_list)):
                 if not result_list[result_index].ready():
-                    logger.debug("Waiting for process #%s to finish", result_index+1)
+                    if self._verbose:
+                        logger.info("Waiting for process #%s to finish", result_index+1)
                     result_list[result_index].wait(timeout=GDF.TIMEOUT)
-                logger.debug("Process #%s finished", result_index+1)
+                if self._verbose:
+                    logger.info("Process #%s finished", result_index+1)
 
             pool.close()
             pool.join()
-            logger.debug("All processes completed.")
+            if self._verbose:
+                logger.info("All processes completed.")
 
             for variable_name in variable_names:
                 sa.delete(variable_name + '_' + str(os.getpid())) # Delete array in Posix shared memory - will not affect result_dict['arrays'][variable_name]
