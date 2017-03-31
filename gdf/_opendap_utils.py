@@ -70,6 +70,6 @@ def get_nc_list(opendap_catalog_url, endpoint_suffix='.nc'):
             tele.append(text)
     
     try:
-      return sorted([row[0] for row in tables[0] if re.match('.*\%s$' % endpoint_suffix, row[0])])
+        return sorted([row[0] for row in tables[0] if re.match('.*\%s$' % endpoint_suffix, row[0])])
     except Exception, e:
-      raise Exception("Invalid catalogue %s: %s" % (opendap_catalog_url, e.message))
+        raise Exception("Invalid catalogue %s: %s" % (opendap_catalog_url, e.message))
